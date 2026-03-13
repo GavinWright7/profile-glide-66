@@ -15,7 +15,12 @@ const interactionsRoutes = require('./routes/interactions');
 const premiumRoutes = require('./routes/premium');
 
 const app = express();
-const PORT = Number(process.env.PORT) || config.PORT || 3001;
+
+/*
+Railway injects PORT automatically.
+NEVER hardcode ports in Railway deployments.
+*/
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 
 const required = [
   'LINKEDIN_CLIENT_ID',
@@ -36,33 +41,27 @@ app.get('/health', async (req, res) => {
     const dbOk = await db.healthCheck();
     const redisOk = await redis.redisHealthCheck();
 
-    res.status(dbOk && redisOk ? 200 : 503).json({
+    res.json({
       status: dbOk && redisOk ? 'ok' : 'degraded',
       service: 'profile-glide-auth',
       database: dbOk ? 'ok' : 'error',
       redis: redisOk ? 'ok' : 'error',
-      port: PORT,
+      port: PORT
     });
-  } catch (error) {
-    res.status(503).json({
+  } catch (err) {
+    res.status(500).json({
       status: 'error',
-      service: 'profile-glide-auth',
-      database: 'unknown',
-      redis: 'unknown',
-      port: PORT,
-      error: error.message,
+      error: err.message
     });
   }
 });
 
 app.get('/', (req, res) => {
-  res.status(200).json({
+  res.json({
     status: 'ok',
     service: 'profile-glide-auth',
-    message: 'Server is running',
     health: '/health',
-    linkedin: '/auth/linkedin/start',
-    port: PORT,
+    linkedin: '/auth/linkedin/start'
   });
 });
 
