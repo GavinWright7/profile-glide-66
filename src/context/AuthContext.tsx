@@ -11,7 +11,6 @@ import {
   parseDeepLink,
   decodeToken,
   LINKEDIN_AUTH_URL,
-  LINKEDIN_AUTH_URL_FRESH,
 } from '../auth/authService';
 
 interface AuthContextValue {
@@ -19,7 +18,7 @@ interface AuthContextValue {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  loginWithLinkedIn: (forceAccountChoice?: boolean) => Promise<void>;
+  loginWithLinkedIn: () => Promise<void>;
   logout: () => void;
   updateSession: (session: AuthSession) => void;
 }
@@ -79,8 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const loginWithLinkedIn = useCallback(async (forceAccountChoice = false) => {
-    const url = forceAccountChoice ? LINKEDIN_AUTH_URL_FRESH : LINKEDIN_AUTH_URL;
+  const loginWithLinkedIn = useCallback(async () => {
+    const url = LINKEDIN_AUTH_URL;
     if (Capacitor.isNativePlatform()) {
       // iOS/Android: open LinkedIn in an in-app browser overlay.
       // After auth, LinkedIn redirects to the frontend callback page which

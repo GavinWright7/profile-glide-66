@@ -6,9 +6,7 @@ import { useAuth } from '../context/AuthContext';
 const LoginPage = () => {
   const { loginWithLinkedIn } = useAuth();
 
-  // Always force account choice on login page so user can sign in with a different
-  // LinkedIn account after signing out (avoids auto-sign-in with cached session).
-  const handleLogin = () => loginWithLinkedIn(true);
+  const handleLogin = () => loginWithLinkedIn();
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6">

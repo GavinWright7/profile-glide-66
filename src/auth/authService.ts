@@ -24,8 +24,6 @@ if (!rawBackendUrl || rawBackendUrl.includes('YOUR_MAC_LAN_IP')) {
 export const BACKEND_URL = rawBackendUrl.replace(/\/$/, '');
 
 export const LINKEDIN_AUTH_URL = `${BACKEND_URL}/auth/linkedin/start`;
-/** Use when user should choose account (e.g. after sign out). Adds prompt=login. */
-export const LINKEDIN_AUTH_URL_FRESH = `${BACKEND_URL}/auth/linkedin/start?force_login=1`;
 
 export interface AuthUser {
   id: string;
