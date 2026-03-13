@@ -4,7 +4,7 @@ import { mockConnections } from '@/data/mockUsers';
 
 const ConnectionsPage = () => {
   return (
-    <div className="min-h-screen p-6 pb-24 max-w-md mx-auto">
+    <div className="min-h-screen pt-12 p-6 pb-24 max-w-md mx-auto">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground mb-1">Connection History</h1>
         <p className="text-sm text-muted-foreground mb-6">

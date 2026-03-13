@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+        <string>Profile Glide</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+	<!-- Location usage descriptions (required for all location access) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Profile Glide uses your location to discover nearby professionals. Location is only accessed while Start Sharing is active.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Profile Glide uses your location in the background to keep you discoverable to nearby professionals while you use other apps. This only runs when "Stay discoverable in background" is enabled.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Profile Glide uses your location to keep you discoverable to nearby professionals, including when the app is in the background.</string>
+	<!-- Required for background location delivery via UIBackgroundModes -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<!-- MultipeerConnectivity: required on iOS 14+ for local network (Wi-Fi peer discovery) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Profile Glide uses your local network to discover nearby professionals via MultipeerConnectivity.</string>
+	<!-- Bonjour service types used by MultipeerConnectivity (service type: pg-share) -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pg-share._tcp</string>
+		<string>_pg-share._udp</string>
+	</array>
+	<!-- Bluetooth fallback: required by iOS for CBCentralManager (BLE scanning) -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Profile Glide uses Bluetooth to discover nearby professionals.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Profile Glide uses Bluetooth to connect with nearby users.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.gavinwright.profileglide</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>profileglide</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

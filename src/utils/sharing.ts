@@ -1,0 +1,577 @@
+/**
+ * sharing.ts — location-based live presence discovery with background support.
+ *
+ * FOREGROUND: setInterval heartbeat (10 s) + poll (5 s)
+ * BACKGROUND: Geolocation.watchPosition piggyback — callbacks fire because
+ *             UIBackgroundModes: [location] is declared in Info.plist.
+ *             Each callback checks if ≥15 s have passed and sends a heartbeat.
+ *
+ * Why this works in background:
+ *   iOS suspends JS timers when the app is backgrounded, BUT if you have
+ *   UIBackgroundModes: [location] declared, Core Location keeps calling the
+ *   Capacitor watchPosition callback even while the app is backgrounded.
+ *   We piggyback the heartbeat on those callbacks.
+ *
+ * Persistence:
+ *   Sharing on/off + user + token saved in localStorage.
+ *   Call tryAutoResume(user, token) after auth loads to restore session.
+ *
+ * Backend timeout: 45 s — far exceeds the worst-case network jitter.
+ *   Foreground: heartbeat every 10 s  → 4.5× margin
+ *   Background: heartbeat every 15 s  → 3× margin
+ */
+
+import { Geolocation }  from '@capacitor/geolocation';
+import { App }          from '@capacitor/app';
+import { Capacitor }    from '@capacitor/core';
+import { BACKEND_URL }  from '../auth/authService';
+import type { AuthUser } from '../auth/authService';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const HEARTBEAT_FG_MS   = 10_000;   // foreground: heartbeat every 10 s
+const HEARTBEAT_BG_MS   = 15_000;   // background: heartbeat every 15 s (via watchPosition)
+const POLL_FG_MS        = 5_000;    // foreground: nearby poll every 5 s
+const MAX_LOGS          = 50;
+
+// localStorage keys
+const SK_ON    = 'pg_sharing_on';
+const SK_BG    = 'pg_bg_sharing';
+const SK_USER  = 'pg_sharing_user';
+const SK_TOKEN = 'pg_sharing_token';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface NearbyShareUser {
+  userId:         string;
+  fullName:       string;
+  headline:       string;
+  photoUrl:       string;
+  linkedinUrl:    string;
+  distanceMeters: number;
+  interests?:     string[];
+  relevanceScore?: number;
+}
+
+export interface SharingFilters {
+  industries?: string[];
+  subcategories?: string[];
+}
+
+export interface SharingState {
+  isSharing:               boolean;
+  locationPermission:      'granted' | 'denied' | 'prompt' | 'unknown';
+  currentLocation:         { lat: number; lng: number } | null;
+  nearbyUsers:             NearbyShareUser[];
+  lastHeartbeatAt:         Date | null;
+  lastPollAt:              Date | null;
+  error:                   string | null;
+  logs:                    string[];
+  sortBy:                  'distance' | 'relevance';
+  radiusMeters:            number;
+  filters:                 SharingFilters;
+  requiresPremiumPaywall:  boolean;
+  // Background / lifecycle
+  appLifecycle:            'foreground' | 'background';
+  backgroundSharingEnabled: boolean;
+  heartbeatIntervalMs:     number;
+}
+
+// ── Module-level state ───────────────────────────────────────────────────────
+
+function loadBgPref(): boolean {
+  try { return localStorage.getItem(SK_BG) !== 'false'; } catch { return true; }
+}
+
+const FREE_RADIUS = 152.4;
+const PREMIUM_RADIUS = 609.6;
+
+let state: SharingState = {
+  isSharing:                false,
+  locationPermission:       'unknown',
+  currentLocation:          null,
+  nearbyUsers:              [],
+  lastHeartbeatAt:          null,
+  lastPollAt:               null,
+  error:                    null,
+  logs:                     [],
+  sortBy:                   'distance',
+  radiusMeters:             FREE_RADIUS,
+  filters:                  {},
+  requiresPremiumPaywall:   false,
+  appLifecycle:             'foreground',
+  backgroundSharingEnabled: loadBgPref(),
+  heartbeatIntervalMs:      HEARTBEAT_FG_MS,
+};
+
+const subscribers = new Set<() => void>();
+
+function setState(patch: Partial<SharingState>) {
+  state = { ...state, ...patch };
+  subscribers.forEach((fn) => fn());
+}
+
+function addLog(msg: string) {
+  const ts   = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const line = `${ts} ${msg}`;
+  console.log('[Sharing]', line);
+  setState({ logs: [...state.logs.slice(-(MAX_LOGS - 1)), line] });
+}
+
+// ── Internal refs ────────────────────────────────────────────────────────────
+
+let _token:               string | null = null;
+let _location:            { lat: number; lng: number } | null = null;
+let _heartbeatTimer:      ReturnType<typeof setInterval> | null = null;
+let _pollTimer:           ReturnType<typeof setInterval> | null = null;
+let _watchId:             string | null = null;        // watchPosition ID (background)
+let _lastHeartbeatTime    = 0;                         // ms since epoch of last heartbeat
+let _isStarting           = false;
+let _lifecycleInitialized = false;
+let _autoResumeAttempted  = false;
+
+// ── App lifecycle listener ───────────────────────────────────────────────────
+
+function initLifecycleListener() {
+  if (_lifecycleInitialized) return;
+  _lifecycleInitialized = true;
+
+  App.addListener('appStateChange', ({ isActive }) => {
+    const lifecycle: SharingState['appLifecycle'] = isActive ? 'foreground' : 'background';
+    setState({ appLifecycle: lifecycle });
+
+    if (!state.isSharing) return;
+
+    if (isActive) {
+      // ── Returning to foreground ───────────────────────────────────────────
+      addLog('lifecycle: foreground — resuming normal discovery');
+      stopBackgroundWatch();
+      startForegroundIntervals();
+      void doNearbyPoll(); // immediate UI refresh
+    } else {
+      // ── Entering background ───────────────────────────────────────────────
+      clearForegroundIntervals();
+      if (state.backgroundSharingEnabled) {
+        addLog('lifecycle: backgrounded — continuing via watchPosition (UIBackgroundModes: location)');
+        void startBackgroundWatch();
+      } else {
+        addLog('lifecycle: backgrounded — background sharing disabled, pausing');
+        // Paused; no heartbeats until foregrounded again.
+      }
+    }
+  });
+}
+
+// ── Foreground intervals ─────────────────────────────────────────────────────
+
+function startForegroundIntervals() {
+  clearForegroundIntervals();
+  _heartbeatTimer = setInterval(() => { void doHeartbeat(); }, HEARTBEAT_FG_MS);
+  _pollTimer      = setInterval(() => { void doNearbyPoll(); }, POLL_FG_MS);
+  setState({ heartbeatIntervalMs: HEARTBEAT_FG_MS });
+  addLog(`intervals: heartbeat=${HEARTBEAT_FG_MS / 1000}s  poll=${POLL_FG_MS / 1000}s`);
+}
+
+function clearForegroundIntervals() {
+  if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+  if (_pollTimer)      { clearInterval(_pollTimer);      _pollTimer      = null; }
+}
+
+// ── Background watchPosition ─────────────────────────────────────────────────
+// iOS fires the watchPosition callback in background when UIBackgroundModes: [location]
+// is declared.  We throttle to HEARTBEAT_BG_MS so we don't spam the backend.
+
+async function startBackgroundWatch() {
+  if (_watchId !== null) return;
+  if (!Capacitor.isNativePlatform()) return;
+
+  setState({ heartbeatIntervalMs: HEARTBEAT_BG_MS });
+  addLog(`background: starting watchPosition (heartbeat every ${HEARTBEAT_BG_MS / 1000}s)`);
+
+  try {
+    _watchId = await Geolocation.watchPosition(
+      { enableHighAccuracy: true },
+      (pos, err) => {
+        if (err || !pos) return;
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        _location = loc;
+        setState({ currentLocation: loc });
+
+        const now = Date.now();
+        if (now - _lastHeartbeatTime >= HEARTBEAT_BG_MS) {
+          _lastHeartbeatTime = now;
+          void doHeartbeat();
+          void doNearbyPoll();   // piggyback poll with every background heartbeat
+        }
+      }
+    );
+    addLog(`background: watchPosition active id=${_watchId}`);
+  } catch (err) {
+    addLog(`background watch error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function stopBackgroundWatch() {
+  if (_watchId !== null) {
+    Geolocation.clearWatch({ id: _watchId }).catch(() => {});
+    addLog(`background: watchPosition stopped id=${_watchId}`);
+    _watchId = null;
+  }
+}
+
+// ── Location helpers ─────────────────────────────────────────────────────────
+
+async function checkPermission(): Promise<SharingState['locationPermission']> {
+  try {
+    const perm = await Geolocation.checkPermissions();
+    return perm.location as SharingState['locationPermission'];
+  } catch { return 'unknown'; }
+}
+
+async function requestPermission(): Promise<boolean> {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const perm   = await Geolocation.requestPermissions();
+      const granted = perm.location === 'granted';
+      setState({ locationPermission: granted ? 'granted' : 'denied' });
+      return granted;
+    }
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => { setState({ locationPermission: 'granted' }); resolve(true); },
+        () => { setState({ locationPermission: 'denied'  }); resolve(false); }
+      );
+    });
+  } catch { return false; }
+}
+
+async function getPosition(highAccuracy = true): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const pos = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: highAccuracy,
+      timeout: highAccuracy ? 10000 : 3000,
+    });
+    const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    _location = loc;
+    setState({ currentLocation: loc });
+    return loc;
+  } catch (err) {
+    addLog(`getPosition error: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+// ── API helpers ──────────────────────────────────────────────────────────────
+
+function buildUrl(path: string): string {
+  const base = BACKEND_URL.replace(/\/$/, '');
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+async function apiPost(path: string, body: object): Promise<Response> {
+  const url = buildUrl(path);
+  return fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_token}` },
+    body:    JSON.stringify(body),
+  });
+}
+
+async function apiGet(path: string, params: Record<string, string>): Promise<Response> {
+  const qs = new URLSearchParams(params).toString();
+  const url = `${buildUrl(path)}?${qs}`;
+  return fetch(url, {
+    headers: { 'Authorization': `Bearer ${_token}` },
+  });
+}
+
+export function setSortBy(sort: 'distance' | 'relevance') {
+  setState({ sortBy: sort });
+}
+
+export function setRadiusMeters(meters: number) {
+  setState({ radiusMeters: Math.min(meters, PREMIUM_RADIUS) });
+}
+
+export function setPremiumRadius(isPremium: boolean) {
+  setState({ radiusMeters: isPremium ? PREMIUM_RADIUS : FREE_RADIUS });
+}
+
+export function setFilters(filters: SharingFilters) {
+  setState({ filters });
+}
+
+export function setRequiresPremiumPaywall(show: boolean) {
+  setState({ requiresPremiumPaywall: show });
+}
+
+export function clearRequiresPremiumPaywall() {
+  setState({ requiresPremiumPaywall: false });
+}
+
+// ── Heartbeat + Poll ─────────────────────────────────────────────────────────
+
+async function doHeartbeat() {
+  // Use cached location if available; fetch fresh if not
+  if (!_location) {
+    const loc = await getPosition();
+    if (!loc) { addLog('heartbeat: no location — skipping'); return; }
+  }
+  try {
+    const res = await apiPost('/sharing/heartbeat', {
+      latitude:  _location!.lat,
+      longitude: _location!.lng,
+    });
+    if (res.ok) {
+      _lastHeartbeatTime = Date.now();
+      setState({ lastHeartbeatAt: new Date() });
+    } else {
+      addLog(`heartbeat: server ${res.status}`);
+    }
+  } catch (err) {
+    addLog(`heartbeat error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function doNearbyPoll() {
+  const loc = _location;
+  if (!loc) return;
+  const params: Record<string, string> = {
+    latitude:  String(loc.lat),
+    longitude: String(loc.lng),
+    sort:      state.sortBy,
+    radiusMeters: String(state.radiusMeters),
+  };
+  const ind = state.filters.industries;
+  const subs = state.filters.subcategories;
+  if (ind?.length) params.filterIndustries = ind.join(',');
+  if (subs?.length) params.filterSubcategories = subs.join(',');
+  try {
+    const res = await apiGet('/sharing/nearby', params);
+    if (res.ok) {
+      const data = await res.json() as { users: NearbyShareUser[] };
+      const prev  = state.nearbyUsers.length;
+      const next  = data.users?.length ?? 0;
+      setState({ nearbyUsers: data.users ?? [], lastPollAt: new Date(), requiresPremiumPaywall: false });
+      if (next > prev) addLog(`nearby: ${next} user(s) found`);
+      if (next < prev && next === 0) addLog(`nearby: all users left (stopped sharing / out of range / heartbeat expired)`);
+      if (next < prev && next  > 0) addLog(`nearby: ${prev - next} user(s) left (${next} remaining)`);
+    } else {
+      const body = await res.json().catch(() => ({})) as { requiresPremium?: boolean };
+      if (res.status === 403 && body.requiresPremium) {
+        setState({ requiresPremiumPaywall: true });
+      }
+      addLog(`poll: server ${res.status}`);
+    }
+  } catch (err) {
+    addLog(`poll error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// ── Persistence ──────────────────────────────────────────────────────────────
+
+function persistSession(user: AuthUser, token: string) {
+  try {
+    localStorage.setItem(SK_ON,    'true');
+    localStorage.setItem(SK_USER,  JSON.stringify(user));
+    localStorage.setItem(SK_TOKEN, token);
+  } catch { /* ignore storage errors */ }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SK_ON);
+    localStorage.removeItem(SK_USER);
+    localStorage.removeItem(SK_TOKEN);
+  } catch { /* ignore */ }
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
+
+export function getSharingState(): SharingState {
+  return state;
+}
+
+export function subscribeToSharingState(fn: () => void): () => void {
+  subscribers.add(fn);
+  return () => subscribers.delete(fn);
+}
+
+/**
+ * Toggle whether sharing continues when the app is backgrounded.
+ * Default: ON. Persists across launches.
+ */
+export function setBackgroundSharingEnabled(enabled: boolean) {
+  try { localStorage.setItem(SK_BG, String(enabled)); } catch { /* ignore */ }
+  setState({ backgroundSharingEnabled: enabled });
+  addLog(`background sharing: ${enabled ? 'enabled ✓' : 'disabled'}`);
+
+  // If currently in background with bg disabled → stop watch immediately
+  if (!enabled && _watchId !== null) {
+    stopBackgroundWatch();
+  }
+  // If currently in background with bg just enabled → start watch
+  if (enabled && state.isSharing && state.appLifecycle === 'background' && _watchId === null) {
+    void startBackgroundWatch();
+  }
+}
+
+/**
+ * Call once after the user is authenticated.
+ * If sharing was active when the app last ran, resumes automatically.
+ */
+export async function tryAutoResume(user: AuthUser, token: string): Promise<void> {
+  if (_autoResumeAttempted || state.isSharing) return;
+  _autoResumeAttempted = true;
+  try {
+    const wasOn = localStorage.getItem(SK_ON) === 'true';
+    if (wasOn) {
+      addLog('auto-resume: restoring previous sharing session');
+      await startSharing(user, token);
+    }
+  } catch { /* ignore */ }
+}
+
+/**
+ * Start sharing: request location → register with backend → heartbeat + poll loops.
+ * Background-capable once UIBackgroundModes: [location] is in Info.plist.
+ */
+export async function startSharing(user: AuthUser, token: string): Promise<void> {
+  if (_isStarting) { addLog('startSharing: already starting'); return; }
+  if (state.isSharing) { addLog('startSharing: already sharing'); return; }
+
+  _isStarting = true;
+  _token      = token;
+  setState({ error: null });
+  initLifecycleListener();   // safe to call multiple times — no-op after first
+
+  try {
+    // ── 1. Location permission ────────────────────────────────────────────────
+    addLog('startSharing: checking location permission');
+    let perm = await checkPermission();
+    setState({ locationPermission: perm });
+
+    if (perm !== 'granted') {
+      addLog('startSharing: requesting location permission');
+      const ok = await requestPermission();
+      if (!ok) {
+        setState({ error: 'Location permission required.' });
+        addLog('startSharing: permission denied — aborting');
+        return;
+      }
+      perm = 'granted';
+    }
+    addLog('startSharing: location permission ✓');
+
+    // Optimistic UI: show Discoverable immediately while we fetch location + register
+    setState({ isSharing: true });
+
+    // ── 2. Initial position (low accuracy = fast, uses cell/wifi) ─────────────
+    addLog('startSharing: getting current location');
+    const loc = await getPosition(false);
+    if (!loc) {
+      setState({ error: 'Could not get current location.', isSharing: false });
+      return;
+    }
+    addLog(`startSharing: location ✓  ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
+
+    // ── 3. Register with backend ──────────────────────────────────────────────
+    const startPath = '/sharing/start';
+    const startBody = { latitude: loc.lat, longitude: loc.lng };
+    const startUrl = buildUrl(startPath);
+
+    addLog('startSharing: registering with backend');
+    console.log('[Sharing] backend base URL:', BACKEND_URL);
+    console.log('[Sharing] full startSharing URL:', startUrl);
+    console.log('[Sharing] request method: POST');
+    console.log('[Sharing] request body:', JSON.stringify(startBody));
+
+    let res: Response;
+    try {
+      res = await apiPost(startPath, startBody);
+    } catch (fetchErr) {
+      const err = fetchErr as Error & { cause?: unknown };
+      const detail = [
+        err.message,
+        err.name && err.name !== 'Error' ? `(${err.name})` : '',
+        err.cause ? `cause: ${String(err.cause)}` : '',
+      ].filter(Boolean).join(' ');
+      const msg = `Network error: ${detail || 'request failed'}. Check backend URL and connectivity.`;
+      addLog(`startSharing FAILED: ${msg}`);
+      console.error('[Sharing] fetch error:', fetchErr);
+      setState({ error: msg, isSharing: false });
+      return;
+    }
+
+    const status = res.status;
+    let resBody: unknown;
+    try {
+      const text = await res.text();
+      resBody = text ? (JSON.parse(text) as object) : {};
+      console.log('[Sharing] response status:', status);
+      console.log('[Sharing] response body:', resBody);
+    } catch {
+      resBody = {};
+      console.log('[Sharing] response status:', status, '(body not JSON)');
+    }
+
+    if (!res.ok) {
+      const body = resBody as { error?: string };
+      const msg = `Backend error ${status}: ${body?.error ?? 'unknown'}`;
+      setState({ error: msg, isSharing: false });
+      addLog(msg);
+      return;
+    }
+    addLog('startSharing: registered ✓');
+
+    // ── 4. Persist + start loops ──────────────────────────────────────────────
+    persistSession(user, token);
+    _lastHeartbeatTime = Date.now();
+    setState({ isSharing: true, lastHeartbeatAt: new Date() });
+
+    startForegroundIntervals();
+    void doNearbyPoll();   // populate radar immediately, don't wait 5 s
+
+    addLog('startSharing: active ✓  (backgrounding will continue via watchPosition)');
+
+  } catch (err) {
+    const e = err as Error & { cause?: unknown };
+    const msg = e.message || String(err);
+    const detail = e.cause ? ` (${String(e.cause)})` : '';
+    const full = `startSharing failed: ${msg}${detail}`;
+    addLog(`startSharing FAILED: ${full}`);
+    console.error('[Sharing] startSharing error:', err);
+    setState({ error: full, isSharing: false });
+    clearForegroundIntervals();
+    clearSession();
+  } finally {
+    _isStarting = false;
+  }
+}
+
+/**
+ * Stop sharing: clears all timers, notifies backend, wipes persisted state.
+ */
+export async function stopSharing(): Promise<void> {
+  addLog('stopSharing called');
+  _isStarting = false;
+  clearForegroundIntervals();
+  stopBackgroundWatch();
+  clearSession();
+  setState({
+    isSharing:      false,
+    nearbyUsers:    [],
+    lastHeartbeatAt: null,
+    heartbeatIntervalMs: HEARTBEAT_FG_MS,
+  });
+
+  if (_token) {
+    apiPost('/sharing/stop', {}).catch((err) => {
+      addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+  _token    = null;
+  _location = null;
+  addLog('stopSharing: done');
+}

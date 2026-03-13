@@ -102,12 +102,12 @@ const RadarView = ({ users, isScanning, onUserTap }: RadarViewProps) => {
                   animate={{ y: [0, -6, 0] }}
                   transition={{ duration: 2.5 + index * 0.3, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  <div className="w-12 h-12 rounded-full bg-secondary border-2 border-primary/40 flex items-center justify-center group-hover:border-primary transition-colors glow-ring">
-                    <span className="text-foreground text-xs font-semibold">
+                  <div className="w-11 h-11 rounded-full bg-secondary border-2 border-primary/40 flex items-center justify-center group-hover:border-primary transition-colors glow-ring">
+                    <span className="text-foreground text-[11px] font-semibold">
                       {getInitials(user.name)}
                     </span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-medium max-w-[70px] truncate">
+                  <span className="text-[10px] text-muted-foreground font-medium max-w-[64px] truncate">
                     {user.name.split(' ')[0]}
                   </span>
                 </motion.div>

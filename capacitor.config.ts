@@ -1,13 +1,13 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.93fb422ec267421c84055f26a49a080d',
-  appName: 'AirDrop LinkedIn',
+  appId: 'com.gavinwright.profileglide',
+  appName: 'Profile Glide',
   webDir: 'dist',
-  server: {
-    url: 'https://93fb422e-c267-421c-8405-5f26a49a080d.lovableproject.com?forceHideBadge=true',
-    cleartext: true,
-  },
+  // Deep link URL scheme (profileglide://) is registered natively:
+  //   iOS  → ios/App/App/Info.plist  (CFBundleURLTypes → CFBundleURLSchemes)
+  //   Android → android/app/src/main/AndroidManifest.xml (<intent-filter>)
+  // capacitor.config.ts has no typed field for app URL schemes.
 };
 
 export default config;

@@ -24,10 +24,7 @@ function requireEnv(keys) {
   }
 }
 
-const PORT = Number(process.env.PORT) || 3001;
-
 module.exports = {
-  PORT,
 
   DATABASE_URL: process.env.DATABASE_URL,
   REDIS_URL: process.env.REDIS_URL,

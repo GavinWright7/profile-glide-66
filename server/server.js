@@ -16,11 +16,11 @@ const premiumRoutes = require('./routes/premium');
 
 const app = express();
 
-/*
-Railway injects PORT automatically.
-NEVER hardcode ports in Railway deployments.
-*/
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
+const PORT = Number(process.env.PORT);
+if (!PORT || PORT <= 0 || !Number.isInteger(PORT)) {
+  console.error('FATAL: PORT environment variable must be set (Railway injects this automatically).');
+  process.exit(1);
+}
 
 const required = [
   'LINKEDIN_CLIENT_ID',
@@ -72,7 +72,5 @@ app.use('/interactions', interactionsRoutes);
 app.use('/premium', premiumRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Profile Glide auth server running on port ${PORT}`);
-  console.log(`Health check: /health`);
-  console.log(`LinkedIn OAuth start: /auth/linkedin/start`);
+  console.log(`Server running on Railway port ${PORT}`);
 });

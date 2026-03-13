@@ -1,10 +1,14 @@
 import { motion } from 'framer-motion';
 import { Linkedin, Wifi } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const LoginPage = () => {
-  const navigate = useNavigate();
+  const { loginWithLinkedIn } = useAuth();
+
+  // Always force account choice on login page so user can sign in with a different
+  // LinkedIn account after signing out (avoids auto-sign-in with cached session).
+  const handleLogin = () => loginWithLinkedIn(true);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6">
@@ -22,17 +26,17 @@ const LoginPage = () => {
           <Wifi size={36} className="text-primary" />
         </motion.div>
 
-        <h1 className="text-3xl font-bold text-foreground mb-2">AirDrop LinkedIn</h1>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Profile Glide</h1>
         <p className="text-muted-foreground text-sm mb-12 leading-relaxed">
           Exchange LinkedIn profiles instantly with nearby professionals. Like AirDrop, but for your career.
         </p>
 
         <Button
-          className="w-full bg-linkedin hover:bg-linkedin/90 text-linkedin-foreground font-semibold h-12 gap-3 text-base"
-          onClick={() => navigate('/')}
+          className="w-full bg-[#0A66C2] hover:bg-[#004182] text-white font-semibold h-12 gap-3 text-base"
+          onClick={handleLogin}
         >
           <Linkedin size={20} />
-          Sign in with LinkedIn
+          Continue with LinkedIn
         </Button>
 
         <p className="text-[10px] text-muted-foreground mt-6 leading-relaxed">
