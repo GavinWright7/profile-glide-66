@@ -1,26 +1,46 @@
 /**
  * Redis client for live presence and geospatial nearby lookup.
  * Uses ioredis — compatible with Redis 6+ GEO commands.
+ * On Railway, REDIS_URL must point to the internal Redis service (not localhost).
  */
 const Redis = require('ioredis');
 const config = require('../config');
 
 let client = null;
+let initError = null;
 
 function getRedis() {
-  if (!client) {
-    if (!config.REDIS_URL) {
-      throw new Error('REDIS_URL is not set');
-    }
+  if (client) return client;
+  if (initError) throw initError;
+
+  if (!config.REDIS_URL) {
+    initError = new Error('REDIS_URL is not set. Set it in Railway → Variables to your Redis service URL (e.g. redis://default:xxx@redis.railway.internal:6379).');
+    console.error('[redis]', initError.message);
+    throw initError;
+  }
+
+  if (config.REDIS_URL.includes('localhost') && process.env.NODE_ENV === 'production') {
+    console.error('[redis] REDIS_URL is localhost — this will not work on Railway. Use the internal Redis service URL from Railway → Variables.');
+  }
+
+  try {
     client = new Redis(config.REDIS_URL, {
       maxRetriesPerRequest: 3,
       retryStrategy(times) {
         if (times > 3) return null;
         return Math.min(times * 100, 3000);
       },
+      enableReadyCheck: true,
+      connectTimeout: 5000,
     });
     client.on('error', (err) => console.error('[redis]', err.message));
+    client.on('connect', () => console.log('[redis] connected'));
+  } catch (err) {
+    initError = err;
+    console.error('[redis] Failed to create client:', err.message);
+    throw new Error(`Redis unavailable: ${err.message}. Ensure REDIS_URL in Railway Variables points to your Redis service.`);
   }
+
   return client;
 }
 

@@ -17,9 +17,8 @@ function requireEnv(keys) {
   });
 
   if (invalid.length) {
-    console.error('\n❌ Missing or placeholder environment variables:');
-    invalid.forEach((k) => console.error(`   ${k}`));
-    console.error('\nSet these in Railway → Variables.\n');
+    const msg = `FATAL: Missing required environment variables: ${invalid.join(', ')}. Set these in Railway → Variables.`;
+    console.error('\n❌', msg);
     process.exit(1);
   }
 }

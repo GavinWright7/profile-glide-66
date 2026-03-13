@@ -16,11 +16,8 @@ const premiumRoutes = require('./routes/premium');
 
 const app = express();
 
-const PORT = Number(process.env.PORT);
-if (!PORT || PORT <= 0 || !Number.isInteger(PORT)) {
-  console.error('FATAL: PORT environment variable must be set (Railway injects this automatically).');
-  process.exit(1);
-}
+const PORT = Number(process.env.PORT) || 3001;
+console.log(`[startup] PORT=${PORT} (process.env.PORT=${process.env.PORT || 'not set'})`);
 
 const required = [
   'LINKEDIN_CLIENT_ID',
@@ -32,6 +29,18 @@ const required = [
 ];
 
 config.requireEnv(required);
+
+// Log resolved config (excluding secrets) for debugging
+const safeConfig = {
+  PORT,
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  LINKEDIN_REDIRECT_URI: config.LINKEDIN_REDIRECT_URI ? '(set)' : '(missing)',
+  DATABASE_URL: config.DATABASE_URL ? '(set)' : '(missing)',
+  REDIS_URL: config.REDIS_URL
+    ? (config.REDIS_URL.includes('localhost') ? 'localhost (⚠️ use Railway Redis URL in production)' : '(set)')
+    : '(missing)',
+};
+console.log('[startup] config:', JSON.stringify(safeConfig, null, 2));
 
 app.use(cors());
 app.use(express.json());
@@ -72,5 +81,5 @@ app.use('/interactions', interactionsRoutes);
 app.use('/premium', premiumRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on Railway port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
