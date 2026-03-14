@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import BottomNav from "./components/BottomNav";
 import SwipeableTabs from "./components/SwipeableTabs";
+import AnimatedTabPage from "./components/AnimatedTabPage";
 import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
 import RadarPage from "./pages/RadarPage";
@@ -11,6 +12,7 @@ import ConnectionsPage from "./pages/ConnectionsPage";
 import HistoryPage from "./pages/HistoryPage";
 import SavedProfilesPage from "./pages/SavedProfilesPage";
 import SettingsPage from "./pages/SettingsPage";
+import SocialModePage from "./pages/SocialModePage";
 import OnboardingInterestsPage from "./pages/OnboardingInterestsPage";
 import OnboardingSubcategoriesPage from "./pages/OnboardingSubcategoriesPage";
 import OnboardingLinkedInPage from "./pages/OnboardingLinkedInPage";
@@ -150,7 +152,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <OnboardingGuard>
-                    <HomePage />
+                    <AnimatedTabPage>
+                      <HomePage />
+                    </AnimatedTabPage>
                   </OnboardingGuard>
                 </ProtectedRoute>
               }
@@ -160,7 +164,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <OnboardingGuard>
-                    <RadarPage />
+                    <AnimatedTabPage>
+                      <RadarPage />
+                    </AnimatedTabPage>
                   </OnboardingGuard>
                 </ProtectedRoute>
               }
@@ -170,7 +176,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <OnboardingGuard>
-                    <ConnectionsPage />
+                    <AnimatedTabPage>
+                      <ConnectionsPage />
+                    </AnimatedTabPage>
                   </OnboardingGuard>
                 </ProtectedRoute>
               }
@@ -180,7 +188,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <OnboardingGuard>
-                    <HistoryPage />
+                    <AnimatedTabPage>
+                      <HistoryPage />
+                    </AnimatedTabPage>
                   </OnboardingGuard>
                 </ProtectedRoute>
               }
@@ -196,10 +206,22 @@ const App = () => (
               }
             />
             <Route
+              path="/social-mode"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <SocialModePage />
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/settings"
               element={
                 <ProtectedRoute>
-                  <SettingsPage />
+                  <AnimatedTabPage>
+                    <SettingsPage />
+                  </AnimatedTabPage>
                 </ProtectedRoute>
               }
             />

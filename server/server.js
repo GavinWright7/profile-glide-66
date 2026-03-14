@@ -13,6 +13,7 @@ const profileRoutes = require('./routes/profile');
 const sharingRoutes = require('./routes/sharing');
 const interactionsRoutes = require('./routes/interactions');
 const premiumRoutes = require('./routes/premium');
+const socialModeRoutes = require('./routes/socialMode');
 
 const app = express();
 
@@ -79,6 +80,7 @@ app.use('/profile', profileRoutes);
 app.use('/sharing', sharingRoutes);
 app.use('/interactions', interactionsRoutes);
 app.use('/premium', premiumRoutes);
+app.use('/social-mode', socialModeRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);

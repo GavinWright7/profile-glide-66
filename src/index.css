@@ -117,3 +117,35 @@
 [data-sonner-toaster][data-y-position='top'] {
   top: calc(36px + env(safe-area-inset-top, 0px)) !important;
 }
+
+/* Social Mode — gold background */
+.social-mode-page {
+  background: linear-gradient(180deg, hsl(45 60% 92%) 0%, hsl(43 55% 85%) 100%);
+  color: hsl(220 20% 15%);
+}
+.social-mode-page .text-foreground {
+  color: hsl(220 20% 15%);
+}
+.social-mode-page .text-foreground\/90 {
+  color: hsl(220 20% 20%);
+}
+.social-mode-page .text-foreground\/80 {
+  color: hsl(220 15% 35%);
+}
+.social-mode-page .text-foreground\/70 {
+  color: hsl(220 12% 45%);
+}
+.social-mode-page .border-success\/30 {
+  border-color: hsl(142 72% 45% / 0.3);
+}
+.social-mode-page .bg-success\/15 {
+  background-color: hsl(142 72% 45% / 0.15);
+}
+.social-mode-page input {
+  background: hsl(0 0% 100%);
+  border-color: hsl(220 14% 85%);
+  color: hsl(220 20% 15%);
+}
+.social-mode-page input::placeholder {
+  color: hsl(220 10% 55%);
+}

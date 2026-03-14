@@ -107,13 +107,14 @@ const OnboardingGoalsPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 pb-24">
+    <div className="min-h-screen flex flex-col p-6 pb-24">
       <motion.div
-        className="w-full max-w-sm"
+        className="w-full max-w-sm mx-auto flex flex-col flex-1 min-h-0"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="text-center mb-8">
+        {/* Title — 72px lower */}
+        <div className="text-center mb-4 mt-[72px] shrink-0">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
             <Target size={32} className="text-primary" />
           </div>
@@ -123,40 +124,46 @@ const OnboardingGoalsPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <div className="flex flex-wrap gap-2">
-            {GOAL_OPTIONS.map((goal) => (
-              <button
-                key={goal}
-                type="button"
-                onClick={() => toggle(goal)}
-                disabled={loading}
-                className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors touch-manipulation ${
-                  selected.includes(goal)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted hover:bg-muted/80 text-muted-foreground active:bg-muted/90'
-                }`}
-              >
-                {goal}
-              </button>
-            ))}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0" noValidate>
+          {/* Scrollable goals rectangle — scrolls internally, Finish stays visible */}
+          <div className="max-h-[45vh] overflow-y-auto rounded-xl border border-border bg-muted/20 p-4 mb-4">
+            <div className="flex flex-wrap gap-2">
+              {GOAL_OPTIONS.map((goal) => (
+                <button
+                  key={goal}
+                  type="button"
+                  onClick={() => toggle(goal)}
+                  disabled={loading}
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors touch-manipulation ${
+                    selected.includes(goal)
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted hover:bg-muted/80 text-muted-foreground active:bg-muted/90'
+                  }`}
+                >
+                  {goal}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            {selected.length} selected
-          </p>
+          {/* Always visible footer with count, error, Finish */}
+          <div className="shrink-0 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {selected.length} selected
+            </p>
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
 
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={loading || selected.length === 0}
-          >
-            {loading ? 'Saving…' : 'Finish'}
-          </Button>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || selected.length === 0}
+            >
+              {loading ? 'Saving…' : 'Finish'}
+            </Button>
+          </div>
         </form>
       </motion.div>
     </div>

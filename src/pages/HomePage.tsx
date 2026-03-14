@@ -1,13 +1,15 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wifi, WifiOff, LogOut } from 'lucide-react';
+import { Wifi, WifiOff, LogOut, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
 
 const HomePage = () => {
+  const navigate = useNavigate();
   const { user, token, logout } = useAuth();
-  const sharing               = useSharing();
+  const sharing = useSharing();
 
   // Auto-resume if sharing was active when the app last ran
   useEffect(() => {
@@ -124,8 +126,8 @@ const HomePage = () => {
           )}
         </motion.button>
 
-        {/* Discoverable / Not Sharing with dot — below wifi signal */}
-        <div className="flex items-center justify-center gap-2 mb-2">
+        {/* Discoverable / Not Sharing with dot — below wifi signal, 72px lower */}
+        <div className="flex items-center justify-center gap-2 mb-2 mt-[72px]">
           <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
           <h2 className="text-2xl font-bold text-foreground">
             {sharing.isSharing ? 'Discoverable' : 'Not Sharing'}
@@ -138,6 +140,15 @@ const HomePage = () => {
               : 'Broadcasting your profile to people nearby'
             : 'Tap to broadcast your profile to nearby people'}
         </p>
+
+        <Button
+          variant="outline"
+          className="w-full mt-6 gap-2"
+          onClick={() => navigate('/social-mode')}
+        >
+          <Sparkles size={18} />
+          Social Mode
+        </Button>
         </div>
         </div>
 

@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Radar, Users, History, Settings, Home } from 'lucide-react';
 import { useSharing } from '../hooks/useSharing';
+import { swipeDirectionRef } from '@/utils/tabNavigation';
 
 const tabs = [
   { path: '/', icon: Home, label: 'Home' },
@@ -26,7 +27,10 @@ const BottomNav = () => {
           return (
             <button
               key={tab.path}
-              onClick={() => navigate(tab.path)}
+              onClick={() => {
+                swipeDirectionRef.current = 0;
+                navigate(tab.path);
+              }}
               className={`flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors relative min-w-[56px] ${
                 isActive ? 'text-primary' : 'text-muted-foreground'
               }`}

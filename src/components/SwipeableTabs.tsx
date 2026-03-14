@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { swipeDirectionRef } from '@/utils/tabNavigation';
 
 const TAB_PATHS = ['/', '/radar', '/connections', '/history', '/settings'];
 
-const SWIPE_THRESHOLD = 80;
+const SWIPE_THRESHOLD = 50;
 
 export default function SwipeableTabs({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -31,7 +32,7 @@ export default function SwipeableTabs({ children }: { children: React.ReactNode 
     const touch = e.touches[0];
     const dx = Math.abs(touch.clientX - touchStart.current.x);
     const dy = Math.abs(touch.clientY - touchStart.current.y);
-    if (dy > dx * 1.5) {
+    if (dy > dx * 0.5) {
       touchStart.current = null;
       setIsSwiping(false);
     }
@@ -50,8 +51,10 @@ export default function SwipeableTabs({ children }: { children: React.ReactNode 
       setIsSwiping(false);
 
       if (dx < -SWIPE_THRESHOLD && currentIndex < TAB_PATHS.length - 1) {
+        swipeDirectionRef.current = 1; // swiping left = next tab
         navigate(TAB_PATHS[currentIndex + 1]);
       } else if (dx > SWIPE_THRESHOLD && currentIndex > 0) {
+        swipeDirectionRef.current = -1; // swiping right = prev tab
         navigate(TAB_PATHS[currentIndex - 1]);
       }
     },
