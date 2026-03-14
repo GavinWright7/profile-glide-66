@@ -7,20 +7,21 @@ import { BACKEND_URL } from '@/auth/authService';
 
 export default function SocialModePage() {
   const navigate = useNavigate();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       setErrorMessage('Please enter your email');
       setStatus('error');
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(trimmed)) {
+    if (!emailRegex.test(trimmedEmail)) {
       setErrorMessage('Please enter a valid email address');
       setStatus('error');
       return;
@@ -33,7 +34,7 @@ export default function SocialModePage() {
       const res = await fetch(`${BACKEND_URL}/social-mode/early-access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: trimmedEmail, name: name.trim() || undefined }),
       });
       const data = await res.json();
 
@@ -44,6 +45,7 @@ export default function SocialModePage() {
       }
 
       setStatus('success');
+      setName('');
       setEmail('');
     } catch {
       setErrorMessage('Something went wrong. Please try again.');
@@ -74,8 +76,7 @@ export default function SocialModePage() {
           </p>
           <p className="text-sm font-medium text-foreground/80">Coming soon.</p>
           <p className="text-foreground/80 text-sm leading-relaxed">
-            Social Mode is where you can connect TikTok, Instagram, and many more to be discoverable
-            by people in your radius.
+            Social Mode allows you to connect your TikTok, Instagram, and other social platforms to AirLink, letting you expand your audience by broadcasting your accounts to people in your radius.
           </p>
         </div>
 
@@ -88,6 +89,15 @@ export default function SocialModePage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
+            <Input
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={status === 'loading'}
+              className="bg-background/80"
+              autoComplete="name"
+            />
             <Input
               type="email"
               placeholder="Enter your email"

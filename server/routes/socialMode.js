@@ -7,8 +7,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** POST /social-mode/early-access — add email to waitlist (public, no auth) */
 router.post('/early-access', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, name } = req.body;
     const trimmed = typeof email === 'string' ? email.trim() : '';
+    const nameVal = typeof name === 'string' ? name.trim() : null;
 
     if (!trimmed) {
       return res.status(400).json({ error: 'Email is required' });
@@ -19,10 +20,10 @@ router.post('/early-access', async (req, res) => {
     }
 
     const { rowCount } = await db.query(
-      `INSERT INTO social_mode_early_access (email) VALUES ($1)
+      `INSERT INTO social_mode_early_access (email, name) VALUES ($1, $2)
        ON CONFLICT (email) DO NOTHING
        RETURNING id`,
-      [trimmed.toLowerCase()]
+      [trimmed.toLowerCase(), nameVal || null]
     );
 
     res.status(201).json({
