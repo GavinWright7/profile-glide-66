@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion';
 import { Shield, Eye, Linkedin, LogOut, ChevronRight, Sparkles } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSharing } from '../hooks/useSharing';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
@@ -11,10 +12,11 @@ import { BACKEND_URL } from '../auth/authService';
 import { saveSession } from '../auth/authService';
 import { useEntitlement } from '../hooks/useEntitlement';
 
+import { LOGGED_OUT_FLAG } from '../auth/authService';
+
 const SettingsPage = () => {
-  const [discoverable, setDiscoverable] = useState(true);
-  const [showCompany, setShowCompany] = useState(true);
-  const [showHeadline, setShowHeadline] = useState(true);
+  const sharing = useSharing();
+  const [discoverable, setDiscoverable] = useState(sharing.isSharing);
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [linkedinError, setLinkedinError] = useState<string | null>(null);
   const [linkedinSaving, setLinkedinSaving] = useState(false);
@@ -28,14 +30,25 @@ const SettingsPage = () => {
   // Initialize linkedinUrl from user when available
   const displayUrl = linkedinUrl || user?.linkedinUrl || '';
 
+  useEffect(() => {
+    setDiscoverable(sharing.isSharing);
+  }, [sharing.isSharing]);
+
+  const handleDiscoverableChange = async (checked: boolean) => {
+    setDiscoverable(checked);
+    if (checked && user && token) {
+      await sharing.startSharing(user, token);
+    } else {
+      await sharing.stopSharing();
+    }
+  };
+
   const settingGroups = [
     {
       title: 'Privacy',
       icon: Shield,
       items: [
-        { label: 'Discoverable by nearby users', value: discoverable, onChange: setDiscoverable },
-        { label: 'Show company name', value: showCompany, onChange: setShowCompany },
-        { label: 'Show headline', value: showHeadline, onChange: setShowHeadline },
+        { label: 'Discoverable by nearby users', value: discoverable, onChange: handleDiscoverableChange },
       ],
     },
   ];
@@ -75,12 +88,17 @@ const SettingsPage = () => {
   };
 
   const handleSignOut = () => {
+    try {
+      sessionStorage.setItem(LOGGED_OUT_FLAG, '1');
+    } catch {
+      /* ignore */
+    }
     logout();
     navigate('/login', { replace: true });
   };
 
   return (
-    <div className="min-h-screen p-6 pb-24 max-w-md mx-auto">
+    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground mb-6">Settings</h1>
 

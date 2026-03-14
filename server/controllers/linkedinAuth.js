@@ -7,6 +7,13 @@ const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
 const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 
 function startLinkedInOAuth(req, res) {
+  if (req.query.force_login === '1') {
+    const base = config.LINKEDIN_REDIRECT_URI.replace(/\/auth\/linkedin\/callback\/?(\?.*)?$/i, '');
+    const oauthStartUrl = `${base}/auth/linkedin/start`;
+    const logoutUrl = `https://www.linkedin.com/oauth/v2/logout?redirect_uri=${encodeURIComponent(oauthStartUrl)}`;
+    return res.redirect(logoutUrl);
+  }
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: config.LINKEDIN_CLIENT_ID,

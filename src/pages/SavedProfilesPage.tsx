@@ -1,11 +1,16 @@
 import { motion } from 'framer-motion';
-import { Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Trash2, ChevronLeft } from 'lucide-react';
 import { useConnections } from '../context/ConnectionsContext';
 import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
 
-const ConnectionsPage = () => {
-  const { connections, removeConnection } = useConnections();
-  const connected = connections.filter((c) => c.status === 'connected');
+const SavedProfilesPage = () => {
+  const navigate = useNavigate();
+  const { savedProfiles, removeSavedProfile } = useConnections();
+  const sorted = [...savedProfiles].sort(
+    (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
+  );
 
   const getInitials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase();
@@ -13,15 +18,23 @@ const ConnectionsPage = () => {
   return (
     <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-foreground mb-1">Connections</h1>
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-4"
+        >
+          <ChevronLeft size={20} />
+          <span className="text-sm">Back</span>
+        </button>
+
+        <h1 className="text-2xl font-bold text-foreground mb-1">Saved Profiles</h1>
         <p className="text-sm text-muted-foreground mb-6">
-          People who accepted your request on LinkedIn
+          Profiles you saved without sending a request
         </p>
 
         <div className="space-y-3">
-          {connected.map((conn, i) => (
+          {sorted.map((saved, i) => (
             <motion.div
-              key={conn.id}
+              key={saved.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
@@ -29,22 +42,25 @@ const ConnectionsPage = () => {
             >
               <div className="w-12 h-12 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0">
                 <span className="text-foreground text-sm font-semibold">
-                  {getInitials(conn.user.name)}
+                  {getInitials(saved.user.name)}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-semibold text-foreground truncate">
-                  {conn.user.name}
+                  {saved.user.name}
                 </h3>
                 <p className="text-xs text-muted-foreground truncate">
-                  {conn.user.headline}
+                  {saved.user.headline}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Saved {format(saved.savedAt, 'MMM d')}
                 </p>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-destructive shrink-0"
-                onClick={() => removeConnection(conn.id)}
+                onClick={() => removeSavedProfile(saved.id)}
                 title="Remove"
               >
                 <Trash2 size={16} />
@@ -53,11 +69,11 @@ const ConnectionsPage = () => {
           ))}
         </div>
 
-        {connected.length === 0 && (
+        {sorted.length === 0 && (
           <div className="text-center py-16">
-            <p className="text-muted-foreground">No confirmed connections yet</p>
+            <p className="text-muted-foreground">No saved profiles</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Swipe right in History to confirm when someone accepts
+              Tap &quot;Save Profile&quot; when viewing someone on the radar
             </p>
           </div>
         )}
@@ -66,4 +82,4 @@ const ConnectionsPage = () => {
   );
 };
 
-export default ConnectionsPage;
+export default SavedProfilesPage;

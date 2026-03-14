@@ -103,6 +103,41 @@ async function updateInterests(linkedinSubjectId, interests) {
   return res.rows[0] || null;
 }
 
+async function updateProfessionalBackground(linkedinSubjectId, data) {
+  const { currentJobTitle, currentCompany, almaMater, pastCompanies } = data;
+  const res = await db.query(
+    `UPDATE profiles p
+     SET current_job_title = $2,
+         current_company = $3,
+         alma_mater = $4,
+         past_companies = $5,
+         updated_at = NOW()
+     FROM users u
+     WHERE u.id = p.user_id AND u.linkedin_subject_id = $1
+     RETURNING p.*`,
+    [
+      linkedinSubjectId,
+      currentJobTitle || null,
+      currentCompany || null,
+      almaMater || null,
+      Array.isArray(pastCompanies) ? pastCompanies : [],
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+async function updateGoals(linkedinSubjectId, goals) {
+  const res = await db.query(
+    `UPDATE profiles p
+     SET goals = $2, updated_at = NOW()
+     FROM users u
+     WHERE u.id = p.user_id AND u.linkedin_subject_id = $1
+     RETURNING p.*`,
+    [linkedinSubjectId, Array.isArray(goals) ? goals : []]
+  );
+  return res.rows[0] || null;
+}
+
 module.exports = {
   upsertUser,
   upsertProfile,
@@ -110,4 +145,6 @@ module.exports = {
   getProfilesByUserIds,
   updateLinkedInUrl,
   updateInterests,
+  updateProfessionalBackground,
+  updateGoals,
 };

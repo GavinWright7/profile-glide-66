@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Filter } from 'lucide-react';
+import { Filter, List, X } from 'lucide-react';
 import RadarView from '@/components/RadarView';
 import ProfileCard from '@/components/ProfileCard';
 import PremiumPaywall from '@/components/PremiumPaywall';
-import { NearbyUser } from '@/data/mockUsers';
+import { NearbyUser, mockNearbyUsers } from '@/data/mockUsers';
 import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { NearbyShareUser } from '../utils/sharing';
 import { useAuth } from '../context/AuthContext';
+import { useConnections } from '../context/ConnectionsContext';
 import { BACKEND_URL } from '../auth/authService';
 
 /**
@@ -58,9 +59,11 @@ const RadarPage = () => {
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<string | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [listViewOpen, setListViewOpen] = useState(false);
   const sharing = useSharing();
-  const { token, user } = useAuth();
-  const { isPremium } = useEntitlement();
+  const { token } = useAuth();
+  const { addConnection, addSavedProfile } = useConnections();
+  const { isPremium, isLoading: entitlementLoading } = useEntitlement();
 
   const subcategories = sharing.filters?.subcategories ?? [];
   const hasActiveFilters = subcategories.length > 0;
@@ -74,12 +77,16 @@ const RadarPage = () => {
   }, [isPremium, sharing]);
 
   useEffect(() => {
+    if (entitlementLoading || isPremium) {
+      sharing.clearRequiresPremiumPaywall();
+      return;
+    }
     if (sharing.requiresPremiumPaywall) {
       setShowPaywall(true);
       setPaywallFeature(undefined);
       sharing.clearRequiresPremiumPaywall();
     }
-  }, [sharing.requiresPremiumPaywall]);
+  }, [sharing.requiresPremiumPaywall, isPremium, entitlementLoading, sharing]);
 
   const handleSortBy = (sort: 'distance' | 'relevance') => {
     if (sort === 'relevance' && !isPremium) {
@@ -112,9 +119,14 @@ const RadarPage = () => {
     sharing.setSortBy('distance');
   };
 
-  const radarUsers: NearbyUser[] = sharing.nearbyUsers.map((u, i) =>
-    shareUserToRadarUser(u, i)
-  );
+  const radarUsers: NearbyUser[] =
+    sharing.nearbyUsers.length > 0
+      ? sharing.nearbyUsers.map((u, i) => shareUserToRadarUser(u, i))
+      : mockNearbyUsers.map((u, i) => ({
+          ...u,
+          distance: u.distance,
+          angle: (i * 73 + 20) % 360,
+        }));
 
   const statusMessage = (() => {
     if (hasActiveFilters) {
@@ -142,7 +154,7 @@ const RadarPage = () => {
     }
   }, [selectedUser?.id, token]);
 
-  const handleConnect = async (u: NearbyUser) => {
+  const handleConnect = async (u: NearbyUser, didConnect?: boolean) => {
     if (token) {
       try {
         await fetch(`${BACKEND_URL}/interactions/connect`, {
@@ -160,14 +172,31 @@ const RadarPage = () => {
         /* ignore */
       }
     }
-    toast.success(`Connection request sent to ${u.name}!`);
+    const loc = sharing.currentLocation;
+    addConnection(u, 'pending', loc?.lat, loc?.lng);
+    if (didConnect) {
+      toast.success(`Request sent to ${u.name}`, { duration: 3000 });
+    } else {
+      toast.success(`Added ${u.name} to History`, { duration: 3000 });
+    }
     setSelectedUser(null);
   };
 
+  const getInitials = (name: string) =>
+    name.split(' ').map((n) => n[0]).join('').toUpperCase();
+
   return (
-    <div className="h-screen flex flex-col overflow-hidden px-4 pb-20">
+    <div className="h-screen flex flex-col overflow-hidden pb-20">
+      {/* Page header — 60px higher than Connections baseline */}
+      <div
+        className="shrink-0 px-4 pb-2"
+        style={{ paddingTop: 'calc(8rem - 60px + env(safe-area-inset-top, 0px))' }}
+      >
+        <h1 className="text-2xl font-bold text-foreground">Discover</h1>
+      </div>
+
       {/* Centered content block — fills available height, vertically centers the whole discover area */}
-      <div className="flex-1 min-h-0 flex flex-col justify-center">
+      <div className="flex-1 min-h-0 flex flex-col justify-center px-4">
         <div className="flex flex-col items-center w-full max-w-md mx-auto">
           {/* 1. Top controls section — tightly grouped, 8px between elements */}
           <div className="flex flex-col items-center gap-2 shrink-0 relative z-20">
@@ -178,7 +207,7 @@ const RadarPage = () => {
                 }`}
               />
               <span className="text-[10px] text-muted-foreground font-medium">
-                {sharing.isSharing ? 'Discovering nearby' : 'Not sharing'}
+                {sharing.isSharing ? 'Discovering people nearby' : 'Not sharing'}
               </span>
             </div>
 
@@ -205,20 +234,18 @@ const RadarPage = () => {
               >
                 Best matches {!isPremium && '🔒'}
               </button>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={handleFiltersClick}
-                  className={`text-[11px] px-3 py-1.5 min-h-[36px] rounded-full transition-colors flex items-center gap-1 cursor-pointer touch-manipulation ${
-                    filtersOpen || hasActiveFilters
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/90'
-                  }`}
-                >
-                  <Filter size={10} />
-                  Filters{hasActiveFilters ? ` (${subcategories.length})` : ''} {!isPremium && '🔒'}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleFiltersClick}
+                className={`text-[11px] px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer touch-manipulation ${
+                  filtersOpen || hasActiveFilters
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/90'
+                }`}
+              >
+                <Filter size={10} />
+                Filters{hasActiveFilters ? ` (${subcategories.length})` : ''} {!isPremium && '🔒'}
+              </button>
             </div>
 
             <p className="text-[10px] text-muted-foreground text-center max-w-[280px] leading-tight min-h-[28px] flex items-center justify-center">
@@ -251,6 +278,18 @@ const RadarPage = () => {
               ? 'Waiting for nearby users…'
               : 'Go back and tap Start Sharing'}
           </p>
+
+          {/* 4. View list button — below tap hint */}
+          {radarUsers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setListViewOpen(true)}
+              className="mt-3 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-sm font-medium"
+            >
+              <List size={16} />
+              View list
+            </button>
+          )}
         </div>
       </div>
 
@@ -261,7 +300,7 @@ const RadarPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-background/60 backdrop-blur-sm"
+            className="fixed inset-0 z-40 flex items-start justify-center pt-24 p-4 bg-background/60 backdrop-blur-sm"
             onClick={(e) => e.target === e.currentTarget && setFiltersOpen(false)}
           >
             <motion.div
@@ -313,12 +352,80 @@ const RadarPage = () => {
             user={selectedUser}
             onClose={() => setSelectedUser(null)}
             onConnect={handleConnect}
+            onSaveProfile={(u) => {
+              addSavedProfile(u);
+              toast.success(`Saved ${u.name}`, { duration: 3000 });
+            }}
           />
         )}
       </AnimatePresence>
 
+      {/* List view overlay — drag up to view all profiles, no radar, YOU circle at top center */}
       <AnimatePresence>
-        {showPaywall && (
+        {listViewOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-background flex flex-col"
+          >
+            <div
+              className="shrink-0 flex items-center justify-between px-4 pt-[env(safe-area-inset-top,0px)] pb-3 border-b border-border"
+              style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
+            >
+              <h2 className="text-lg font-semibold text-foreground">View list</h2>
+              <button
+                type="button"
+                onClick={() => setListViewOpen(false)}
+                className="p-2 -m-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* YOU circle at top center — fixed, list scrolls below with padding so nothing goes under it */}
+            <div className="shrink-0 flex justify-center py-6">
+              <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center glow-ring">
+                <span className="text-primary-foreground text-sm font-semibold">You</span>
+              </div>
+            </div>
+
+            {/* Scrollable list — min padding so no item ever overlaps YOU */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-24">
+              <div className="space-y-2">
+                {radarUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedUser(user);
+                      setListViewOpen(false);
+                    }}
+                    className="w-full glass-card p-4 flex items-center gap-4 text-left hover:bg-muted/30 transition-colors rounded-xl"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-secondary border-2 border-primary/40 flex items-center justify-center shrink-0">
+                      <span className="text-foreground text-sm font-semibold">
+                        {getInitials(user.name)}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-foreground truncate">
+                        {user.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {user.headline || `${user.jobTitle} at ${user.company}`}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPaywall && !isPremium && (
           <PremiumPaywall
             onClose={() => { setShowPaywall(false); setPaywallFeature(undefined); }}
             feature={paywallFeature}

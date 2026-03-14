@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { NearbyUser } from '@/data/mockUsers';
 import { X, Linkedin, Share2, Bookmark } from 'lucide-react';
@@ -11,7 +12,8 @@ import { isValidLinkedInUrl } from '@/utils/linkedinUrl';
 interface ProfileCardProps {
   user: NearbyUser;
   onClose: () => void;
-  onConnect: (user: NearbyUser) => void;
+  onConnect: (user: NearbyUser, didConnect?: boolean) => void;
+  onSaveProfile?: (user: NearbyUser) => void;
 }
 
 /**
@@ -20,7 +22,7 @@ interface ProfileCardProps {
  */
 async function openLinkedInProfile(url: string): Promise<void> {
   if (!url || !isValidLinkedInUrl(url)) {
-    toast.error('LinkedIn profile URL is missing or invalid');
+    toast.error('LinkedIn profile URL is missing or invalid', { duration: 3000 });
     return;
   }
 
@@ -50,13 +52,20 @@ async function openLinkedInProfile(url: string): Promise<void> {
   }
 }
 
-const ProfileCard = ({ user, onClose, onConnect }: ProfileCardProps) => {
+const ProfileCard = ({ user, onClose, onConnect, onSaveProfile }: ProfileCardProps) => {
+  const [showDidConnectPrompt, setShowDidConnectPrompt] = useState(false);
   const getInitials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase();
 
   const handleConnect = async () => {
     await openLinkedInProfile(user.linkedinProfileUrl);
-    onConnect(user);
+    setShowDidConnectPrompt(true);
+  };
+
+  const handleDidConnectAnswer = (didConnect: boolean) => {
+    onConnect(user, didConnect);
+    setShowDidConnectPrompt(false);
+    onClose();
   };
 
   const hasValidUrl = isValidLinkedInUrl(user.linkedinProfileUrl);
@@ -110,36 +119,66 @@ const ProfileCard = ({ user, onClose, onConnect }: ProfileCardProps) => {
           </div>
 
           <div className="w-full mt-6 space-y-3">
-            <Button
-              className={`w-full font-semibold gap-2 ${
-                hasValidUrl
-                  ? 'bg-linkedin hover:bg-linkedin/90 text-linkedin-foreground'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
-              }`}
-              onClick={hasValidUrl ? handleConnect : undefined}
-              disabled={!hasValidUrl}
-              title={hasValidUrl ? `Open ${user.linkedinProfileUrl}` : 'LinkedIn profile URL not available'}
-            >
-              <Linkedin size={18} />
-              {hasValidUrl ? 'Connect on LinkedIn' : 'Profile URL unavailable'}
-            </Button>
+            {showDidConnectPrompt ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Did you connect?</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => handleDidConnectAnswer(false)}
+                  >
+                    Not yet
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleDidConnectAnswer(true)}
+                  >
+                    Yes
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                className={`w-full font-semibold gap-2 ${
+                  hasValidUrl
+                    ? 'bg-linkedin hover:bg-linkedin/90 text-linkedin-foreground'
+                    : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
+                }`}
+                onClick={hasValidUrl ? handleConnect : undefined}
+                disabled={!hasValidUrl}
+                title={hasValidUrl ? `Open ${user.linkedinProfileUrl}` : 'LinkedIn profile URL not available'}
+              >
+                <Linkedin size={18} />
+                {hasValidUrl ? 'Connect on LinkedIn' : 'Profile URL unavailable'}
+              </Button>
+            )}
 
-            {!hasValidUrl && (
+            {!hasValidUrl && !showDidConnectPrompt && (
               <p className="text-[10px] text-muted-foreground text-center">
                 This user hasn&apos;t added their LinkedIn profile link yet. They can add it in Settings.
               </p>
             )}
 
+            {!showDidConnectPrompt && (
             <div className="flex gap-3">
               <Button variant="secondary" className="flex-1 gap-2">
                 <Share2 size={16} />
                 Send Profile
               </Button>
-              <Button variant="secondary" className="flex-1 gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1 gap-2"
+                onClick={() => {
+                  onSaveProfile?.(user);
+                  onClose();
+                }}
+              >
                 <Bookmark size={16} />
-                Save
+                Save Profile
               </Button>
             </div>
+            )}
           </div>
         </div>
       </motion.div>

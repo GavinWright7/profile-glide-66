@@ -1,14 +1,11 @@
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wifi, WifiOff, Users, ArrowRight, LogOut } from 'lucide-react';
+import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
-import SharingDebugPanel from '../components/SharingDebugPanel';
 
 const HomePage = () => {
-  const navigate              = useNavigate();
   const { user, token, logout } = useAuth();
   const sharing               = useSharing();
 
@@ -30,15 +27,19 @@ const HomePage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 pb-24">
+    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
       <motion.div
-        className="flex flex-col items-center text-center max-w-sm w-full"
+        className="flex flex-col items-center text-center max-w-sm w-full mx-auto"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        {/* User greeting */}
+        <h1 className="text-2xl font-bold text-foreground mb-1 w-full text-left">Home</h1>
+
+        {/* Everything below Home — 60px lower */}
+        <div className="mt-[60px] flex flex-col items-center w-full">
+        {/* User greeting — 48px higher */}
         {user && (
-          <div className="w-full flex items-center justify-between mb-6">
+          <div className="w-full flex items-center justify-between mb-6 -mt-12">
             <div className="flex items-center gap-3">
               {user.picture ? (
                 <img
@@ -83,14 +84,6 @@ const HomePage = () => {
           </div>
         )}
 
-        {/* Status indicator */}
-        <div className="flex items-center gap-2 mb-8">
-          <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
-          <span className="text-xs text-muted-foreground font-medium">
-            {sharing.isSharing ? 'Discoverable' : 'Not Sharing'}
-          </span>
-        </div>
-
         {/* Error message */}
         {sharing.error && (
           <div className="w-full mb-4 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/20">
@@ -98,7 +91,8 @@ const HomePage = () => {
           </div>
         )}
 
-        {/* Main action button */}
+        {/* Wifi radar + text below — 72px lower */}
+        <div className="mt-[72px] flex flex-col items-center">
         <motion.button
           className="w-40 h-40 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center mb-8 relative"
           whileTap={{ scale: 0.9, y: 2 }}
@@ -112,8 +106,13 @@ const HomePage = () => {
                   key={i}
                   className="absolute inset-0 rounded-full border-2 border-primary/20"
                   initial={{ scale: 1, opacity: 0.5 }}
-                  animate={{ scale: 1.5 + i * 0.3, opacity: 0 }}
-                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 }}
+                  animate={{ scale: 2.2, opacity: 0 }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    repeatDelay: 0,
+                    delay: i * (2 / 3),
+                  }}
                 />
               ))}
             </>
@@ -125,44 +124,24 @@ const HomePage = () => {
           )}
         </motion.button>
 
-        <h2 className="text-2xl font-bold text-foreground mb-2">
-          {sharing.isSharing ? 'Discoverable' : 'Start Sharing'}
-        </h2>
+        {/* Discoverable / Not Sharing with dot — below wifi signal */}
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+          <h2 className="text-2xl font-bold text-foreground">
+            {sharing.isSharing ? 'Discoverable' : 'Not Sharing'}
+          </h2>
+        </div>
         <p className="text-sm text-muted-foreground mb-8">
           {sharing.isSharing
             ? sharing.appLifecycle === 'background'
               ? 'Sharing continues in background'
-              : 'Broadcasting your profile nearby'
+              : 'Broadcasting your profile to people nearby'
             : 'Tap to broadcast your profile to nearby people'}
         </p>
-
-        {/* Quick stats */}
-        <div className="w-full glass-card p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Users size={18} className="text-primary" />
-            <div className="text-left">
-              <p className="text-sm font-semibold text-foreground">
-                {sharing.nearbyUsers.length > 0
-                  ? `${sharing.nearbyUsers.length} nearby`
-                  : '0 nearby'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {sharing.isSharing ? 'scanning…' : 'tap to start'}
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary gap-1"
-            onClick={() => navigate('/connections')}
-          >
-            View <ArrowRight size={14} />
-          </Button>
         </div>
-      </motion.div>
+        </div>
 
-      <SharingDebugPanel />
+      </motion.div>
     </div>
   );
 };

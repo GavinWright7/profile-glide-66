@@ -9,6 +9,7 @@
 
 const TOKEN_KEY = 'pg_session_token';
 const USER_KEY = 'pg_user';
+export const LOGGED_OUT_FLAG = 'pg_just_logged_out';
 
 const rawBackendUrl: string = import.meta.env.VITE_BACKEND_URL || '';
 
@@ -24,6 +25,8 @@ if (!rawBackendUrl || rawBackendUrl.includes('YOUR_MAC_LAN_IP')) {
 export const BACKEND_URL = rawBackendUrl.replace(/\/$/, '');
 
 export const LINKEDIN_AUTH_URL = `${BACKEND_URL}/auth/linkedin/start`;
+/** Use after logout to force LinkedIn to show login form (no auto-login). */
+export const LINKEDIN_AUTH_URL_FORCE_LOGIN = `${BACKEND_URL}/auth/linkedin/start?force_login=1`;
 
 export interface AuthUser {
   id: string;
@@ -35,6 +38,11 @@ export interface AuthUser {
   headline: string;
   linkedinUrl: string;
   interests?: string[];
+  currentJobTitle?: string;
+  currentCompany?: string;
+  almaMater?: string;
+  pastCompanies?: string[];
+  goals?: string[];
 }
 
 export interface AuthSession {

@@ -3,10 +3,20 @@ import { Linkedin, Wifi } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 
+import { LOGGED_OUT_FLAG } from '../auth/authService';
+
 const LoginPage = () => {
   const { loginWithLinkedIn } = useAuth();
 
-  const handleLogin = () => loginWithLinkedIn();
+  const handleLogin = () => {
+    let forceReauth = false;
+    try {
+      forceReauth = sessionStorage.getItem(LOGGED_OUT_FLAG) === '1';
+    } catch {
+      /* ignore */
+    }
+    loginWithLinkedIn(forceReauth);
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6">

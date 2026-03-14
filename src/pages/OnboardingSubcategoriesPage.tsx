@@ -92,7 +92,7 @@ const OnboardingSubcategoriesPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
           {industries.map((industry) => (
             <div key={industry}>
               <h3 className="text-sm font-medium text-foreground mb-2">{industry}</h3>

@@ -63,7 +63,7 @@ const OnboardingLinkedInPage = () => {
         await redeemPromoCode(newToken, 'premium');
       }
 
-      navigate('/', { replace: true });
+      navigate('/onboarding/professional-background', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -88,7 +88,7 @@ const OnboardingLinkedInPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <Input
             type="text"
             inputMode="text"
@@ -96,7 +96,7 @@ const OnboardingLinkedInPage = () => {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             className="font-mono text-sm"
-            autoComplete="url"
+            autoComplete="off"
             disabled={loading}
           />
 

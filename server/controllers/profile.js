@@ -98,6 +98,95 @@ async function updateInterests(req, res) {
 }
 
 /**
+ * PUT /profile/professional-background
+ * Body: { currentJobTitle, currentCompany, almaMater, pastCompanies?: string[] }
+ */
+async function updateProfessionalBackground(req, res) {
+  const { currentJobTitle, currentCompany, almaMater, pastCompanies } = req.body;
+  const user = req.user;
+
+  const jobTitle = String(currentJobTitle ?? '').trim();
+  const company = String(currentCompany ?? '').trim();
+  const alma = String(almaMater ?? '').trim();
+  const past = Array.isArray(pastCompanies)
+    ? pastCompanies.map((s) => String(s ?? '').trim()).filter(Boolean)
+    : [];
+
+  if (!jobTitle || !company || !alma) {
+    return res.status(400).json({
+      error: 'Current job title, current company, and alma mater are required',
+    });
+  }
+
+  try {
+    await userService.updateProfessionalBackground(user.id, {
+      currentJobTitle: jobTitle,
+      currentCompany: company,
+      almaMater: alma,
+      pastCompanies: past,
+    });
+    const updatedUser = {
+      ...user,
+      currentJobTitle: jobTitle,
+      currentCompany: company,
+      almaMater: alma,
+      pastCompanies: past,
+    };
+
+    const token = jwt.sign(
+      { userId: user.id, user: updatedUser },
+      config.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    console.log('[profile] professional background updated for', user.id);
+    res.json({ token, user: updatedUser });
+  } catch (err) {
+    console.error('[profile] updateProfessionalBackground error:', err.message);
+    res.status(500).json({ error: 'Failed to update professional background' });
+  }
+}
+
+/**
+ * PUT /profile/goals
+ * Body: { goals: string[] }
+ */
+async function updateGoals(req, res) {
+  const { goals } = req.body;
+  const user = req.user;
+
+  if (!Array.isArray(goals) || goals.length === 0) {
+    return res.status(400).json({
+      error: 'At least one goal is required',
+    });
+  }
+
+  const normalized = goals.map((s) => String(s ?? '').trim()).filter(Boolean);
+  if (normalized.length === 0) {
+    return res.status(400).json({
+      error: 'At least one goal is required',
+    });
+  }
+
+  try {
+    await userService.updateGoals(user.id, normalized);
+    const updatedUser = { ...user, goals: normalized };
+
+    const token = jwt.sign(
+      { userId: user.id, user: updatedUser },
+      config.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    console.log('[profile] goals updated for', user.id);
+    res.json({ token, user: updatedUser });
+  } catch (err) {
+    console.error('[profile] updateGoals error:', err.message);
+    res.status(500).json({ error: 'Failed to update goals' });
+  }
+}
+
+/**
  * GET /profile
  * Returns current user profile from Neon (merged with JWT).
  */
@@ -108,7 +197,21 @@ async function getProfile(req, res) {
     const stored = await userService.getProfileByLinkedInId(user.id);
     const linkedinUrl = stored?.linkedin_url ?? user.linkedinUrl ?? '';
     const interests = stored?.interests ?? user.interests ?? [];
-    const merged = { ...user, linkedinUrl, interests };
+    const currentJobTitle = stored?.current_job_title ?? user.currentJobTitle ?? null;
+    const currentCompany = stored?.current_company ?? user.currentCompany ?? null;
+    const almaMater = stored?.alma_mater ?? user.almaMater ?? null;
+    const pastCompanies = stored?.past_companies ?? user.pastCompanies ?? [];
+    const goals = stored?.goals ?? user.goals ?? [];
+    const merged = {
+      ...user,
+      linkedinUrl,
+      interests,
+      currentJobTitle,
+      currentCompany,
+      almaMater,
+      pastCompanies,
+      goals,
+    };
     res.json({ user: merged });
   } catch (err) {
     console.error('[profile] getProfile error:', err.message);
@@ -116,4 +219,4 @@ async function getProfile(req, res) {
   }
 }
 
-module.exports = { updateLinkedInUrl, updateInterests, getProfile, getInterestsOptions };
+module.exports = { updateLinkedInUrl, updateInterests, getProfile, getInterestsOptions, updateProfessionalBackground, updateGoals };

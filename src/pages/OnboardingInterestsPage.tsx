@@ -103,7 +103,7 @@ const OnboardingInterestsPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div className="flex flex-wrap gap-2">
             {INTEREST_OPTIONS.map((interest) => (
               <button
