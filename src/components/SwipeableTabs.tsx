@@ -63,7 +63,7 @@ export default function SwipeableTabs({ children }: { children: React.ReactNode 
 
   return (
     <div
-      className="flex-1 min-h-0 overflow-hidden touch-pan-y"
+      className="flex-1 min-h-0 flex flex-col overflow-hidden touch-pan-y"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

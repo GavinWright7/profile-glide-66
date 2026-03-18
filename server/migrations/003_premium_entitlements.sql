@@ -1,4 +1,4 @@
--- Profile Glide — Premium entitlements
+-- AirLinks — Premium entitlements
 -- Tracks premium status from Apple IAP, promo code, or admin grant.
 
 CREATE TABLE IF NOT EXISTS user_premium (

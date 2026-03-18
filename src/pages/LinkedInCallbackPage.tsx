@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { BACKEND_URL, saveSession } from '../auth/authService';
+import { Capacitor } from '@capacitor/core';
+import { BACKEND_URL, saveSession, buildAuthDeepLink } from '../auth/authService';
 import { isValidLinkedInUrl } from '../utils/linkedinUrl';
 
 /**
@@ -10,7 +11,7 @@ import { isValidLinkedInUrl } from '../utils/linkedinUrl';
  *
  * 1. iOS in-app browser (SFSafariViewController)
  *    - Opened by Browser.open() from the native app
- *    - After exchanging the code this page triggers profileglide://auth?token=JWT
+ *    - After exchanging the code this page triggers airlinks://auth?token=JWT
  *    - iOS routes that deep link to the native app, which closes the browser
  *
  * 2. Regular web browser (Vite dev server, http://localhost:5173)
@@ -33,11 +34,20 @@ const LinkedInCallbackPage = () => {
     const errorDesc = searchParams.get('error_description');
 
     if (errorParam) {
-      setError(errorDesc || errorParam);
+      const errMsg = (errorDesc || errorParam || 'unknown_error').toString().trim();
+      if (Capacitor.isNativePlatform()) {
+        window.location.href = buildAuthDeepLink({ error: errMsg });
+        return;
+      }
+      setError(errMsg);
       return;
     }
 
     if (!code) {
+      if (Capacitor.isNativePlatform()) {
+        window.location.href = buildAuthDeepLink({ error: 'No authorization code was returned by LinkedIn.' });
+        return;
+      }
       setError('No authorization code was returned by LinkedIn.');
       return;
     }
@@ -62,9 +72,7 @@ const LinkedInCallbackPage = () => {
         saveSession({ token, user });
 
         // --- Native (iOS in-app browser) ---
-        // Navigating to the deep link hands control back to the native app,
-        // which triggers the appUrlOpen handler in AuthContext.
-        window.location.href = `profileglide://auth?token=${encodeURIComponent(token)}`;
+        window.location.href = buildAuthDeepLink({ token });
 
         // --- Web browser fallback ---
         // Deep link will fail silently in a regular browser.
@@ -77,7 +85,12 @@ const LinkedInCallbackPage = () => {
           navigate(target, { replace: true });
         }, 400);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Authentication failed');
+        const msg = (err instanceof Error ? err.message : 'Authentication failed').toString().trim();
+        if (Capacitor.isNativePlatform()) {
+          window.location.href = buildAuthDeepLink({ error: msg });
+          return;
+        }
+        setError(msg);
       }
     })();
   }, []);

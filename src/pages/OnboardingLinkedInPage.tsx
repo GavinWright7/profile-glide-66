@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
-import { BACKEND_URL } from '../auth/authService';
+import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
 import { redeemPromoCode } from '../services/entitlementService';
 
@@ -40,14 +40,7 @@ const OnboardingLinkedInPage = () => {
 
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/profile/linkedin-url`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ linkedin_url: normalized }),
-      });
+      const res = await apiPut('/profile/linkedin-url', { linkedin_url: normalized });
 
       const data = await res.json();
 
@@ -72,7 +65,10 @@ const OnboardingLinkedInPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6">
+    <div
+      className="flex-1 min-h-0 flex flex-col items-center justify-center px-[var(--page-padding-x)]"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
       <motion.div
         className="w-full max-w-sm"
         initial={{ opacity: 0, y: 20 }}

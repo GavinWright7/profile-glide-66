@@ -1,4 +1,4 @@
--- Profile Glide — Neon PostgreSQL schema
+-- AirLinks — Neon PostgreSQL schema
 -- Run with: psql $DATABASE_URL -f migrations/001_initial_schema.sql
 
 -- Users (identity from LinkedIn)

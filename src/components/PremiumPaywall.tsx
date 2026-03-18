@@ -89,7 +89,7 @@ export default function PremiumPaywall({ onClose, feature }: PremiumPaywallProps
             <Sparkles size={24} className="text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-foreground">Profile Glide Premium</h2>
+            <h2 className="text-lg font-bold text-foreground">AirLinks Premium</h2>
             <p className="text-sm text-muted-foreground">
               {feature ? `Unlock ${feature}` : 'Unlock premium features'}
             </p>

@@ -1,7 +1,6 @@
-const jwt = require('jsonwebtoken');
 const { validateAndNormalize } = require('../utils/linkedinUrl');
 const userService = require('../services/userService');
-const config = require('../config');
+const { signToken } = require('../utils/jwt');
 const { INTEREST_OPTIONS } = require('../constants/interests');
 const { getSubcategoriesForIndustry } = require('../constants/subcategories');
 const interestService = require('../services/interestService');
@@ -27,11 +26,7 @@ async function updateLinkedInUrl(req, res) {
     await userService.updateLinkedInUrl(user.id, normalized);
     const updatedUser = { ...user, linkedinUrl: normalized };
 
-    const token = jwt.sign(
-      { userId: user.id, user: updatedUser },
-      config.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = signToken({ userId: user.id, user: updatedUser });
 
     console.log('[profile] linkedin_url updated for', user.id, '→', normalized);
     res.json({ token, user: updatedUser });
@@ -83,11 +78,7 @@ async function updateInterests(req, res) {
     await userService.updateInterests(user.id, flatIndustries);
     const updatedUser = { ...user, interests: flatIndustries };
 
-    const token = jwt.sign(
-      { userId: user.id, user: updatedUser },
-      config.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = signToken({ userId: user.id, user: updatedUser });
 
     console.log('[profile] interests updated for', user.id);
     res.json({ token, user: updatedUser });
@@ -112,32 +103,28 @@ async function updateProfessionalBackground(req, res) {
     ? pastCompanies.map((s) => String(s ?? '').trim()).filter(Boolean)
     : [];
 
-  if (!jobTitle || !company || !alma) {
+  if (!jobTitle || !alma) {
     return res.status(400).json({
-      error: 'Current job title, current company, and alma mater are required',
+      error: 'Current job title and alma mater are required',
     });
   }
 
   try {
     await userService.updateProfessionalBackground(user.id, {
       currentJobTitle: jobTitle,
-      currentCompany: company,
+      currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
     });
     const updatedUser = {
       ...user,
       currentJobTitle: jobTitle,
-      currentCompany: company,
+      currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
     };
 
-    const token = jwt.sign(
-      { userId: user.id, user: updatedUser },
-      config.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = signToken({ userId: user.id, user: updatedUser });
 
     console.log('[profile] professional background updated for', user.id);
     res.json({ token, user: updatedUser });
@@ -172,11 +159,7 @@ async function updateGoals(req, res) {
     await userService.updateGoals(user.id, normalized);
     const updatedUser = { ...user, goals: normalized };
 
-    const token = jwt.sign(
-      { userId: user.id, user: updatedUser },
-      config.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = signToken({ userId: user.id, user: updatedUser });
 
     console.log('[profile] goals updated for', user.id);
     res.json({ token, user: updatedUser });

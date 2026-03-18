@@ -1,4 +1,4 @@
-# Profile Glide Premium — StoreKit Setup
+# AirLinks Premium — StoreKit Setup
 
 ## Architecture
 
@@ -28,13 +28,13 @@
 1. In Xcode, open **Product → Scheme → Edit Scheme** (or ⌘<).
 2. Select **Run** in the left sidebar.
 3. Open the **Options** tab.
-4. Under **StoreKit Configuration**, choose **ProfileGlide.storekit**.
+4. Under **StoreKit Configuration**, choose **AirLinks.storekit**.
 5. Close the scheme editor.
 
 ### 2. StoreKit config file
-- Path: `ios/App/ProfileGlide.storekit` (in project root: `ios/App/ProfileGlide.storekit`)
+- Path: `ios/App/AirLinks.storekit` (in project root: `ios/App/AirLinks.storekit`)
 - Product: `premium_monthly`, $1.99/month, auto-renewable
-- To add to Xcode: **File → Add Files to "App"…** → select `ProfileGlide.storekit` (optional; you can also browse to it when setting the scheme)
+- To add to Xcode: **File → Add Files to "App"…** → select `AirLinks.storekit` (optional; you can also browse to it when setting the scheme)
 
 ### 3. Test purchase flow
 1. Run the app in the simulator or on a device.

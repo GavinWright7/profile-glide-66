@@ -3,7 +3,7 @@
  * Sources: Apple IAP, promo code, backend (admin grant).
  * Single source of truth: hasPremiumAccess()
  */
-import { BACKEND_URL } from '../auth/authService';
+import { apiRequest } from '../api/client';
 import { StoreKit, isStoreKitAvailable } from '../utils/storeKit';
 
 const PREMIUM_CACHE_KEY = 'pg_premium_status';
@@ -25,9 +25,7 @@ export async function hasPremiumAccess(token: string | null): Promise<boolean> {
   if (isCacheValid()) return cachedPremium!;
 
   try {
-    const res = await fetch(`${BACKEND_URL}/premium/status`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await apiRequest('/premium/status', { method: 'GET' });
     const data = await res.json();
     let isPremium = !!data?.isPremium;
     if (!isPremium && isStoreKitAvailable()) {
@@ -63,12 +61,9 @@ export function invalidatePremiumCache(): void {
 export async function redeemPromoCode(token: string | null, code: string): Promise<boolean> {
   if (!token) return false;
   try {
-    const res = await fetch(`${BACKEND_URL}/premium/promo-code`, {
+    const res = await apiRequest('/premium/promo-code', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: code.trim() }),
     });
     const data = await res.json();
@@ -92,12 +87,9 @@ export async function recordApplePurchase(
 ): Promise<boolean> {
   if (!token) return false;
   try {
-    const res = await fetch(`${BACKEND_URL}/premium/apple-purchase`, {
+    const res = await apiRequest('/premium/apple-purchase', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ productId, originalTransactionId }),
     });
     const data = await res.json();

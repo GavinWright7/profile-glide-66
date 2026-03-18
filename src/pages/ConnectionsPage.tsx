@@ -11,14 +11,15 @@ const ConnectionsPage = () => {
     name.split(' ').map((n) => n[0]).join('').toUpperCase();
 
   return (
-    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-foreground mb-1">Connections</h1>
-        <p className="text-sm text-muted-foreground mb-6">
+    <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col min-w-0 px-[var(--page-padding-x)] pb-20 max-w-md mx-auto w-full">
+        <motion.div className="flex flex-col flex-1 min-h-0" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl font-bold text-foreground shrink-0">Connections</h1>
+        <p className="text-sm text-muted-foreground mb-4 shrink-0">
           People who accepted your request on LinkedIn
         </p>
 
-        <div className="space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
           {connected.map((conn, i) => (
             <motion.div
               key={conn.id}
@@ -54,14 +55,15 @@ const ConnectionsPage = () => {
         </div>
 
         {connected.length === 0 && (
-          <div className="text-center py-16">
+          <div className="text-center py-8 flex-1 flex flex-col justify-center">
             <p className="text-muted-foreground">No confirmed connections yet</p>
             <p className="text-xs text-muted-foreground mt-1">
               Swipe right in History to confirm when someone accepts
             </p>
           </div>
         )}
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 };

@@ -4,8 +4,9 @@ import { Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BACKEND_URL } from '../auth/authService';
+import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
+import ScrollableSelectionBox from '@/components/ScrollableSelectionBox';
 
 const GOAL_OPTIONS = [
   'Looking for funding',
@@ -80,14 +81,7 @@ const OnboardingGoalsPage = () => {
 
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/profile/goals`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ goals: selected }),
-      });
+      const res = await apiPut('/profile/goals', { goals: selected });
 
       const data = await res.json();
 
@@ -107,14 +101,20 @@ const OnboardingGoalsPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col p-6 pb-24">
+    <div
+      className="flex-1 min-h-0 flex flex-col overflow-hidden px-[var(--page-padding-x)]"
+      style={{
+        paddingTop: 'calc(var(--page-padding-top) + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'var(--submit-footer-pad)',
+      }}
+    >
       <motion.div
-        className="w-full max-w-sm mx-auto flex flex-col flex-1 min-h-0"
+        className="w-full flex flex-col flex-1 min-h-0"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        {/* Title — 72px lower */}
-        <div className="text-center mb-4 mt-[72px] shrink-0">
+        {/* 1. Top: title + instructions */}
+        <div className="text-center shrink-0 mb-4">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
             <Target size={32} className="text-primary" />
           </div>
@@ -124,45 +124,45 @@ const OnboardingGoalsPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0" noValidate>
-          {/* Scrollable goals rectangle — scrolls internally, Finish stays visible */}
-          <div className="max-h-[45vh] overflow-y-auto rounded-xl border border-border bg-muted/20 p-4 mb-4">
-            <div className="flex flex-wrap gap-2">
-              {GOAL_OPTIONS.map((goal) => (
-                <button
-                  key={goal}
-                  type="button"
-                  onClick={() => toggle(goal)}
-                  disabled={loading}
-                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors touch-manipulation ${
-                    selected.includes(goal)
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted hover:bg-muted/80 text-muted-foreground active:bg-muted/90'
-                  }`}
-                >
-                  {goal}
-                </button>
-              ))}
+        {/* 2. Center: options container (max 50vh) + submit — vertically centered */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex-1 min-h-0 flex flex-col justify-center min-w-0"
+          noValidate
+        >
+          <div className="flex flex-col items-center gap-4 w-full">
+            <ScrollableSelectionBox>
+              <div className="flex flex-wrap gap-2">
+                {GOAL_OPTIONS.map((goal) => (
+                  <button
+                    key={goal}
+                    type="button"
+                    onClick={() => toggle(goal)}
+                    disabled={loading}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors touch-manipulation ${
+                      selected.includes(goal)
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80 text-muted-foreground active:bg-muted/90'
+                    }`}
+                  >
+                    {goal}
+                  </button>
+                ))}
+              </div>
+            </ScrollableSelectionBox>
+
+            {/* 3. Submit area — always visible, directly below container */}
+            <div className="shrink-0 w-[90%] max-w-sm mx-auto space-y-2">
+              <p className="text-xs text-muted-foreground text-center">{selected.length} selected</p>
+              {error && <p className="text-sm text-destructive text-center">{error}</p>}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || selected.length === 0}
+              >
+                {loading ? 'Saving…' : 'Finish'}
+              </Button>
             </div>
-          </div>
-
-          {/* Always visible footer with count, error, Finish */}
-          <div className="shrink-0 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              {selected.length} selected
-            </p>
-
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading || selected.length === 0}
-            >
-              {loading ? 'Saving…' : 'Finish'}
-            </Button>
           </div>
         </form>
       </motion.div>

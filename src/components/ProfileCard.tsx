@@ -79,7 +79,8 @@ const ProfileCard = ({ user, onClose, onConnect, onSaveProfile }: ProfileCardPro
     >
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
       <motion.div
-        className="relative w-full max-w-sm mx-4 mb-4 sm:mb-0 glass-card p-6 z-10"
+        className="relative w-full max-w-sm mx-4 mb-4 sm:mb-0 glass-card pt-6 px-6 pb-6 z-10"
+        style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 100, opacity: 0 }}

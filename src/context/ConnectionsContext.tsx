@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import type { NearbyUser } from '@/data/mockUsers';
+import { useAuth } from './AuthContext';
 
 export type ConnectionStatus = 'pending' | 'connected';
 
@@ -20,10 +21,13 @@ export interface SavedProfile {
 
 const STORAGE_KEY = 'pg_connections';
 const SAVED_KEY = 'pg_saved_profiles';
+const DEMO_STORAGE_KEY = 'pg_demo_connections';
+const DEMO_SAVED_KEY = 'pg_demo_saved_profiles';
 
-function loadConnections(): ConnectionEntry[] {
+function loadConnections(isDemo: boolean): ConnectionEntry[] {
+  const key = isDemo ? DEMO_STORAGE_KEY : STORAGE_KEY;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return (parsed as ConnectionEntry[]).map((c) => ({
@@ -35,9 +39,10 @@ function loadConnections(): ConnectionEntry[] {
   }
 }
 
-function loadSavedProfiles(): SavedProfile[] {
+function loadSavedProfiles(isDemo: boolean): SavedProfile[] {
+  const key = isDemo ? DEMO_SAVED_KEY : SAVED_KEY;
   try {
-    const raw = localStorage.getItem(SAVED_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return (parsed as SavedProfile[]).map((s) => ({
@@ -49,17 +54,17 @@ function loadSavedProfiles(): SavedProfile[] {
   }
 }
 
-function saveConnections(list: ConnectionEntry[]) {
+function saveConnections(list: ConnectionEntry[], isDemo: boolean) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    localStorage.setItem(isDemo ? DEMO_STORAGE_KEY : STORAGE_KEY, JSON.stringify(list));
   } catch {
     /* ignore */
   }
 }
 
-function saveSavedProfiles(list: SavedProfile[]) {
+function saveSavedProfiles(list: SavedProfile[], isDemo: boolean) {
   try {
-    localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+    localStorage.setItem(isDemo ? DEMO_SAVED_KEY : SAVED_KEY, JSON.stringify(list));
   } catch {
     /* ignore */
   }
@@ -78,16 +83,22 @@ interface ConnectionsContextValue {
 const ConnectionsContext = createContext<ConnectionsContextValue | null>(null);
 
 export function ConnectionsProvider({ children }: { children: ReactNode }) {
-  const [connections, setConnections] = useState<ConnectionEntry[]>(loadConnections);
-  const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>(loadSavedProfiles);
+  const { isDemoUser } = useAuth();
+  const [connections, setConnections] = useState<ConnectionEntry[]>(() => loadConnections(isDemoUser));
+  const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>(() => loadSavedProfiles(isDemoUser));
 
   useEffect(() => {
-    saveConnections(connections);
-  }, [connections]);
+    setConnections(loadConnections(isDemoUser));
+    setSavedProfiles(loadSavedProfiles(isDemoUser));
+  }, [isDemoUser]);
 
   useEffect(() => {
-    saveSavedProfiles(savedProfiles);
-  }, [savedProfiles]);
+    saveConnections(connections, isDemoUser);
+  }, [connections, isDemoUser]);
+
+  useEffect(() => {
+    saveSavedProfiles(savedProfiles, isDemoUser);
+  }, [savedProfiles, isDemoUser]);
 
   const addConnection = useCallback(
     (user: NearbyUser, status: ConnectionStatus = 'pending', lat?: number, lng?: number) => {

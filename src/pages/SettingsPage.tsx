@@ -8,7 +8,7 @@ import { useSharing } from '../hooks/useSharing';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
-import { BACKEND_URL } from '../auth/authService';
+import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
 import { useEntitlement } from '../hooks/useEntitlement';
 
@@ -64,14 +64,7 @@ const SettingsPage = () => {
     setLinkedinError(null);
     setLinkedinSaving(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/profile/linkedin-url`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ linkedin_url: normalized }),
-      });
+      const res = await apiPut('/profile/linkedin-url', { linkedin_url: normalized });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || 'Failed to save');
@@ -98,8 +91,9 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col min-w-0 overflow-y-auto px-[var(--page-padding-x)] pb-20 max-w-md mx-auto w-full">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground mb-6">Settings</h1>
 
         {/* Profile section */}
@@ -240,7 +234,8 @@ const SettingsPage = () => {
           <span className="text-sm font-medium">Sign Out</span>
           <ChevronRight size={16} className="ml-auto" />
         </button>
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 };

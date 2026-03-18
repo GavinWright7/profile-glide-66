@@ -19,7 +19,10 @@ const BottomNav = () => {
   if (location.pathname === '/login') return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 glass-surface border-t border-border/50 pb-[env(safe-area-inset-bottom)]">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 glass-surface border-t border-border/50"
+      style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
+    >
       <div className="flex justify-around items-center h-12 max-w-md mx-auto px-2">
         {tabs.map((tab) => {
           const isActive = location.pathname === tab.path;

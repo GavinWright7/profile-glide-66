@@ -24,8 +24,9 @@
 import { Geolocation }  from '@capacitor/geolocation';
 import { App }          from '@capacitor/app';
 import { Capacitor }    from '@capacitor/core';
-import { BACKEND_URL }  from '../auth/authService';
+import { APPLE_TESTER_USER_ID, AUTH_401_EVENT } from '../auth/authService';
 import type { AuthUser } from '../auth/authService';
+import { apiPost, apiGet } from '../api/client';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,6 @@ function addLog(msg: string) {
 
 // ── Internal refs ────────────────────────────────────────────────────────────
 
-let _token:               string | null = null;
 let _location:            { lat: number; lng: number } | null = null;
 let _heartbeatTimer:      ReturnType<typeof setInterval> | null = null;
 let _pollTimer:           ReturnType<typeof setInterval> | null = null;
@@ -135,6 +135,14 @@ let _autoResumeAttempted  = false;
 function initLifecycleListener() {
   if (_lifecycleInitialized) return;
   _lifecycleInitialized = true;
+
+  // Stop sharing when session expires (401) — prevents stale heartbeat loops
+  window.addEventListener(AUTH_401_EVENT, () => {
+    if (state.isSharing) {
+      addLog('auth expired — stopping sharing');
+      void stopSharing();
+    }
+  });
 
   App.addListener('appStateChange', ({ isActive }) => {
     const lifecycle: SharingState['appLifecycle'] = isActive ? 'foreground' : 'background';
@@ -262,29 +270,7 @@ async function getPosition(highAccuracy = true): Promise<{ lat: number; lng: num
 }
 
 // ── API helpers ──────────────────────────────────────────────────────────────
-
-function buildUrl(path: string): string {
-  const base = BACKEND_URL.replace(/\/$/, '');
-  const p = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${p}`;
-}
-
-async function apiPost(path: string, body: object): Promise<Response> {
-  const url = buildUrl(path);
-  return fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_token}` },
-    body:    JSON.stringify(body),
-  });
-}
-
-async function apiGet(path: string, params: Record<string, string>): Promise<Response> {
-  const qs = new URLSearchParams(params).toString();
-  const url = `${buildUrl(path)}?${qs}`;
-  return fetch(url, {
-    headers: { 'Authorization': `Bearer ${_token}` },
-  });
-}
+// Uses centralized api/client — token read fresh from storage per request, no stale _token.
 
 export function setSortBy(sort: 'distance' | 'relevance') {
   setState({ sortBy: sort });
@@ -379,7 +365,7 @@ function persistSession(user: AuthUser, token: string) {
   } catch { /* ignore storage errors */ }
 }
 
-function clearSession() {
+function clearSharingPersistence() {
   try {
     localStorage.removeItem(SK_ON);
     localStorage.removeItem(SK_USER);
@@ -420,8 +406,10 @@ export function setBackgroundSharingEnabled(enabled: boolean) {
 /**
  * Call once after the user is authenticated.
  * If sharing was active when the app last ran, resumes automatically.
+ * Skips for Apple Tester / demo users.
  */
 export async function tryAutoResume(user: AuthUser, token: string): Promise<void> {
+  if (user.id === APPLE_TESTER_USER_ID) return;
   if (_autoResumeAttempted || state.isSharing) return;
   _autoResumeAttempted = true;
   try {
@@ -434,15 +422,34 @@ export async function tryAutoResume(user: AuthUser, token: string): Promise<void
 }
 
 /**
+ * Start demo sharing (Apple Tester): no backend, empty nearby (no placeholder users).
+ */
+function startDemoSharing(): void {
+  if (state.isSharing) return;
+  setState({
+    isSharing: true,
+    nearbyUsers: [],
+    lastPollAt: new Date(),
+    error: null,
+  });
+  addLog('startDemoSharing: demo mode active ✓');
+}
+
+/**
  * Start sharing: request location → register with backend → heartbeat + poll loops.
  * Background-capable once UIBackgroundModes: [location] is in Info.plist.
+ * For Apple Tester users, uses demo mode (no backend).
  */
 export async function startSharing(user: AuthUser, token: string): Promise<void> {
   if (_isStarting) { addLog('startSharing: already starting'); return; }
   if (state.isSharing) { addLog('startSharing: already sharing'); return; }
 
+  if (user.id === APPLE_TESTER_USER_ID) {
+    startDemoSharing();
+    return;
+  }
+
   _isStarting = true;
-  _token      = token;
   setState({ error: null });
   initLifecycleListener();   // safe to call multiple times — no-op after first
 
@@ -476,20 +483,14 @@ export async function startSharing(user: AuthUser, token: string): Promise<void>
     }
     addLog(`startSharing: location ✓  ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
 
-    // ── 3. Register with backend ──────────────────────────────────────────────
-    const startPath = '/sharing/start';
+    // ── 3. Register with backend (uses centralized api client, token from storage) ───
     const startBody = { latitude: loc.lat, longitude: loc.lng };
-    const startUrl = buildUrl(startPath);
 
     addLog('startSharing: registering with backend');
-    console.log('[Sharing] backend base URL:', BACKEND_URL);
-    console.log('[Sharing] full startSharing URL:', startUrl);
-    console.log('[Sharing] request method: POST');
-    console.log('[Sharing] request body:', JSON.stringify(startBody));
 
     let res: Response;
     try {
-      res = await apiPost(startPath, startBody);
+      res = await apiPost('/sharing/start', startBody);
     } catch (fetchErr) {
       const err = fetchErr as Error & { cause?: unknown };
       const detail = [
@@ -509,11 +510,8 @@ export async function startSharing(user: AuthUser, token: string): Promise<void>
     try {
       const text = await res.text();
       resBody = text ? (JSON.parse(text) as object) : {};
-      console.log('[Sharing] response status:', status);
-      console.log('[Sharing] response body:', resBody);
     } catch {
       resBody = {};
-      console.log('[Sharing] response status:', status, '(body not JSON)');
     }
 
     if (!res.ok) {
@@ -544,7 +542,7 @@ export async function startSharing(user: AuthUser, token: string): Promise<void>
     console.error('[Sharing] startSharing error:', err);
     setState({ error: full, isSharing: false });
     clearForegroundIntervals();
-    clearSession();
+    clearSharingPersistence();
   } finally {
     _isStarting = false;
   }
@@ -558,7 +556,7 @@ export async function stopSharing(): Promise<void> {
   _isStarting = false;
   clearForegroundIntervals();
   stopBackgroundWatch();
-  clearSession();
+  clearSharingPersistence();
   setState({
     isSharing:      false,
     nearbyUsers:    [],
@@ -566,12 +564,10 @@ export async function stopSharing(): Promise<void> {
     heartbeatIntervalMs: HEARTBEAT_FG_MS,
   });
 
-  if (_token) {
-    apiPost('/sharing/stop', {}).catch((err) => {
-      addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
-    });
-  }
-  _token    = null;
+  // Notify backend (api client gets token from storage; no-op if already logged out)
+  apiPost('/sharing/stop', {}).catch((err) => {
+    addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
+  });
   _location = null;
   addLog('stopSharing: done');
 }

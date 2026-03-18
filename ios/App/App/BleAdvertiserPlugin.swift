@@ -64,7 +64,7 @@ public class BleAdvertiserPlugin: CAPPlugin, CAPBridgedPlugin {
         case .poweredOn:
             let data: [String: Any] = [
                 CBAdvertisementDataServiceUUIDsKey: [serviceUUID],
-                CBAdvertisementDataLocalNameKey: "ProfileGlide",
+                CBAdvertisementDataLocalNameKey: "AirLinks",
             ]
             pm.startAdvertising(data)
             print("[BleAdvertiser] pm.startAdvertising() called with UUID=\(serviceUUID.uuidString)")

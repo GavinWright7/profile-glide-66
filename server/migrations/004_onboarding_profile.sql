@@ -1,4 +1,4 @@
--- Profile Glide — Onboarding profile fields (Professional Background + Goals)
+-- AirLinks — Onboarding profile fields (Professional Background + Goals)
 -- Run: psql $DATABASE_URL -f migrations/004_onboarding_profile.sql
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS current_job_title TEXT;

@@ -1,7 +1,7 @@
 {
-  "name": "profile-glide-server",
+  "name": "airlinks-server",
   "version": "1.0.0",
-  "description": "Backend OAuth server for Profile Glide",
+  "description": "Backend OAuth server for AirLinks",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

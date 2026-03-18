@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Filter, List, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import RadarView from '@/components/RadarView';
 import ProfileCard from '@/components/ProfileCard';
 import PremiumPaywall from '@/components/PremiumPaywall';
-import { NearbyUser, mockNearbyUsers } from '@/data/mockUsers';
+import { NearbyUser } from '@/data/mockUsers';
 import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { NearbyShareUser } from '../utils/sharing';
 import { useAuth } from '../context/AuthContext';
 import { useConnections } from '../context/ConnectionsContext';
-import { BACKEND_URL } from '../auth/authService';
+import { apiRequest } from '../api/client';
 
 /**
  * Convert a backend NearbyShareUser to the NearbyUser shape RadarView expects.
@@ -61,7 +62,7 @@ const RadarPage = () => {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [listViewOpen, setListViewOpen] = useState(false);
   const sharing = useSharing();
-  const { token } = useAuth();
+  const { token, isDemoUser } = useAuth();
   const { addConnection, addSavedProfile } = useConnections();
   const { isPremium, isLoading: entitlementLoading } = useEntitlement();
 
@@ -122,11 +123,7 @@ const RadarPage = () => {
   const radarUsers: NearbyUser[] =
     sharing.nearbyUsers.length > 0
       ? sharing.nearbyUsers.map((u, i) => shareUserToRadarUser(u, i))
-      : mockNearbyUsers.map((u, i) => ({
-          ...u,
-          distance: u.distance,
-          angle: (i * 73 + 20) % 360,
-        }));
+      : [];
 
   const statusMessage = (() => {
     if (hasActiveFilters) {
@@ -139,13 +136,10 @@ const RadarPage = () => {
   })();
 
   useEffect(() => {
-    if (selectedUser && token) {
-      fetch(`${BACKEND_URL}/interactions/event`, {
+    if (selectedUser && token && !isDemoUser) {
+      apiRequest('/interactions/event', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: selectedUser.id,
           eventType: 'card_opened',
@@ -155,14 +149,11 @@ const RadarPage = () => {
   }, [selectedUser?.id, token]);
 
   const handleConnect = async (u: NearbyUser, didConnect?: boolean) => {
-    if (token) {
+    if (token && !isDemoUser) {
       try {
-        await fetch(`${BACKEND_URL}/interactions/connect`, {
+        await apiRequest('/interactions/connect', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             targetUserId: u.id,
             connectionMethod: 'in_app_tap',
@@ -186,17 +177,15 @@ const RadarPage = () => {
     name.split(' ').map((n) => n[0]).join('').toUpperCase();
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden pb-20">
-      {/* Page header — 60px higher than Connections baseline */}
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       <div
-        className="shrink-0 px-4 pb-2"
-        style={{ paddingTop: 'calc(8rem - 60px + env(safe-area-inset-top, 0px))' }}
+        className="shrink-0 px-[var(--page-padding-x)] pb-2"
+        style={{ paddingTop: 'calc(var(--page-padding-top) + env(safe-area-inset-top, 0px))' }}
       >
         <h1 className="text-2xl font-bold text-foreground">Discover</h1>
       </div>
 
-      {/* Centered content block — fills available height, vertically centers the whole discover area */}
-      <div className="flex-1 min-h-0 flex flex-col justify-center px-4">
+      <div className="flex-1 min-h-0 flex flex-col justify-center px-[var(--page-padding-x)]">
         <div className="flex flex-col items-center w-full max-w-md mx-auto">
           {/* 1. Top controls section — tightly grouped, 8px between elements */}
           <div className="flex flex-col items-center gap-2 shrink-0 relative z-20">
@@ -256,7 +245,7 @@ const RadarPage = () => {
               {radarUsers.length === 0
                 ? sharing.isSharing
                   ? 'Searching…'
-                  : 'No users'
+                  : 'No users nearby'
                 : `${radarUsers.length} ${radarUsers.length === 1 ? 'person' : 'people'} nearby`}
             </p>
           </div>
@@ -275,8 +264,8 @@ const RadarPage = () => {
             {radarUsers.length > 0
               ? 'Tap a person to view their profile'
               : sharing.isSharing
-              ? 'Waiting for nearby users…'
-              : 'Go back and tap Start Sharing'}
+                ? 'Waiting for nearby users…'
+                : 'No users available yet. Go back and tap Start Sharing to broadcast.'}
           </p>
 
           {/* 4. View list button — below tap hint */}
@@ -300,7 +289,8 @@ const RadarPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-start justify-center pt-24 p-4 bg-background/60 backdrop-blur-sm"
+            className="fixed inset-0 z-40 flex items-start justify-center p-4 bg-background/60 backdrop-blur-sm"
+            style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}
             onClick={(e) => e.target === e.currentTarget && setFiltersOpen(false)}
           >
             <motion.div
@@ -308,17 +298,18 @@ const RadarPage = () => {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-full max-w-sm max-h-[70vh] overflow-hidden rounded-2xl border border-border bg-background shadow-xl"
+              className="w-full max-w-sm max-h-[70vh] overflow-hidden rounded-2xl border border-border bg-background shadow-xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-col max-h-[70vh] overflow-hidden">
-                <p className="text-[10px] font-medium text-muted-foreground mb-3 px-4 pt-4 shrink-0">
-                  Filter by subcategory
-                </p>
+              {/* Header */}
+              <p className="text-[10px] font-medium text-muted-foreground mb-3 px-4 pt-4 shrink-0">
+                Filter by subcategory
+              </p>
 
-                <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+              {/* Scrollable options box */}
+              <div className="flex-1 min-h-0 overflow-y-auto px-4">
                 {allSubcategories.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 pb-4">
                     {allSubcategories.map((sub) => (
                       <button
                         key={sub}
@@ -335,11 +326,24 @@ const RadarPage = () => {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground pb-4">
                     No subcategories available.
                   </p>
                 )}
-                </div>
+              </div>
+
+              {/* Fixed Done button — always visible, respects safe area */}
+              <div
+                className="shrink-0 px-4 pb-4 pt-2 border-t border-border"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
+              >
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={() => setFiltersOpen(false)}
+                >
+                  Done
+                </Button>
               </div>
             </motion.div>
           </motion.div>
@@ -370,7 +374,7 @@ const RadarPage = () => {
             className="fixed inset-0 z-50 bg-background flex flex-col"
           >
             <div
-              className="shrink-0 flex items-center justify-between px-4 pt-[env(safe-area-inset-top,0px)] pb-3 border-b border-border"
+              className="shrink-0 flex items-center justify-between px-4 pb-3 border-b border-border"
               style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
             >
               <h2 className="text-lg font-semibold text-foreground">View list</h2>
@@ -390,8 +394,10 @@ const RadarPage = () => {
               </div>
             </div>
 
-            {/* Scrollable list — min padding so no item ever overlaps YOU */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-24">
+            <div
+              className="flex-1 min-h-0 overflow-y-auto px-4"
+              style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               <div className="space-y-2">
                 {radarUsers.map((user) => (
                   <button

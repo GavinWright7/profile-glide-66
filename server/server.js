@@ -36,6 +36,7 @@ const safeConfig = {
   PORT,
   NODE_ENV: process.env.NODE_ENV || 'development',
   LINKEDIN_REDIRECT_URI: config.LINKEDIN_REDIRECT_URI ? '(set)' : '(missing)',
+  JWT_SECRET: config.JWT_SECRET ? '(set)' : '(missing)',
   DATABASE_URL: config.DATABASE_URL ? '(set)' : '(missing)',
   REDIS_URL: config.REDIS_URL
     ? (config.REDIS_URL.includes('localhost') ? 'localhost (⚠️ use Railway Redis URL in production)' : '(set)')
@@ -53,7 +54,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: dbOk && redisOk ? 'ok' : 'degraded',
-      service: 'profile-glide-auth',
+      service: 'airlinks-auth',
       database: dbOk ? 'ok' : 'error',
       redis: redisOk ? 'ok' : 'error',
       port: PORT
@@ -69,7 +70,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'profile-glide-auth',
+    service: 'airlinks-auth',
     health: '/health',
     linkedin: '/auth/linkedin/start'
   });

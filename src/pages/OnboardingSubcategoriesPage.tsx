@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BACKEND_URL } from '../auth/authService';
+import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
+import ScrollableSelectionBox from '@/components/ScrollableSelectionBox';
 
 /**
  * Optional onboarding step: select subcategories for each chosen industry.
@@ -53,14 +55,7 @@ const OnboardingSubcategoriesPage = () => {
         industry,
         subcategories: selections[industry] || [],
       }));
-      const res = await fetch(`${BACKEND_URL}/profile/interests`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ interests }),
-      });
+      const res = await apiPut('/profile/interests', { interests });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save');
       const { token: newToken, user: u } = data;
@@ -79,52 +74,72 @@ const OnboardingSubcategoriesPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6">
+    <div
+      className="flex-1 min-h-0 flex flex-col overflow-hidden px-[var(--page-padding-x)]"
+      style={{
+        paddingTop: 'calc(var(--page-padding-top) + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'var(--submit-footer-pad)',
+      }}
+    >
       <motion.div
-        className="w-full max-w-sm"
+        className="w-full flex flex-col flex-1 min-h-0"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="text-center mb-8">
+        {/* 1. Top: title + instructions */}
+        <div className="text-center shrink-0 mb-4">
           <h1 className="text-xl font-bold text-foreground mb-2">Add Subcategories (Optional)</h1>
           <p className="text-sm text-muted-foreground">
             Pick subcategories for each industry to improve matching. You can skip this step.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-          {industries.map((industry) => (
-            <div key={industry}>
-              <h3 className="text-sm font-medium text-foreground mb-2">{industry}</h3>
-              <div className="flex flex-wrap gap-2">
-                {(subcategoriesMap[industry] || []).map((sub) => (
-                  <button
-                    key={sub}
-                    type="button"
-                    onClick={() => toggle(industry, sub)}
-                    disabled={loading}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      (selections[industry] || []).includes(sub)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                    }`}
-                  >
-                    {sub}
-                  </button>
+        {/* 2. Center: options container (max 50vh) + submit — vertically centered */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex-1 min-h-0 flex flex-col justify-center min-w-0"
+          noValidate
+        >
+          <div className="flex flex-col items-center gap-4 w-full">
+            <ScrollableSelectionBox>
+              <div className="space-y-4">
+                {industries.map((industry) => (
+                  <div key={industry}>
+                    <h3 className="text-sm font-medium text-foreground mb-2">{industry}</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {(subcategoriesMap[industry] || []).map((sub) => (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => toggle(industry, sub)}
+                          disabled={loading}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors touch-manipulation ${
+                            (selections[industry] || []).includes(sub)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
+            </ScrollableSelectionBox>
+
+            {/* 3. Submit area — always visible, directly below container */}
+            <div className="shrink-0 w-[90%] max-w-sm mx-auto space-y-2">
+              {error && <p className="text-sm text-destructive text-center">{error}</p>}
+              <div className="flex gap-3">
+                <Button type="button" variant="outline" className="flex-1" onClick={handleSkip} disabled={loading}>
+                  Skip
+                </Button>
+                <Button type="submit" className="flex-1 gap-1" disabled={loading}>
+                  {loading ? 'Saving…' : 'Continue'} <ChevronRight size={16} />
+                </Button>
+              </div>
             </div>
-          ))}
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <div className="flex gap-3">
-            <Button type="button" variant="outline" className="flex-1" onClick={handleSkip} disabled={loading}>
-              Skip
-            </Button>
-            <Button type="submit" className="flex-1 gap-1" disabled={loading}>
-              {loading ? 'Saving…' : 'Continue'} <ChevronRight size={16} />
-            </Button>
           </div>
         </form>
       </motion.div>

@@ -1,5 +1,5 @@
 {
-  "identifier" : "ProfileGlide",
+  "identifier" : "AirLinks",
   "nonRenewingSubscriptions" : [
 
   ],
@@ -15,7 +15,7 @@
       "localizations" : [
 
       ],
-      "name" : "Profile Glide Premium",
+      "name" : "AirLinks Premium",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -31,7 +31,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Profile Glide Premium — relevance sorting, radar filters, 2000ft range.",
+              "description" : "AirLinks Premium — relevance sorting, radar filters, 2000ft range.",
               "displayName" : "Premium Monthly",
               "locale" : "en_US"
             }

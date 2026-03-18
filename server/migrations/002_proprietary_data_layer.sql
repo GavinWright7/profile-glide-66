@@ -1,4 +1,4 @@
--- Profile Glide — Proprietary Data Layer
+-- AirLinks — Proprietary Data Layer
 -- Durable source of truth for user identity, connections, proximity, locations, interactions.
 -- Redis: temporary live presence only. Neon: all durable intelligence.
 --

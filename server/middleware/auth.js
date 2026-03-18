@@ -4,10 +4,12 @@ const config = require('../config');
 /**
  * Express middleware that validates the Bearer JWT token in the
  * Authorization header and attaches req.user / req.userId.
+ * Logs reason for 401 (without leaking secrets) for debugging.
  */
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[auth] 401: no token provided');
     return res.status(401).json({ error: 'No token provided' });
   }
 
@@ -17,7 +19,9 @@ function requireAuth(req, res, next) {
     req.user   = payload.user;
     req.userId = payload.userId || payload.user?.id;
     next();
-  } catch {
+  } catch (err) {
+    const reason = err?.name === 'TokenExpiredError' ? 'expired' : 'invalid';
+    console.log(`[auth] 401: token ${reason}`);
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

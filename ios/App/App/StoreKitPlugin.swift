@@ -2,7 +2,7 @@ import Capacitor
 import StoreKit
 
 /**
- * StoreKitPlugin — StoreKit 2 integration for Profile Glide Premium.
+ * StoreKitPlugin — StoreKit 2 integration for AirLinks Premium.
  * Product ID: premium_monthly
  */
 @objc(StoreKitPlugin)

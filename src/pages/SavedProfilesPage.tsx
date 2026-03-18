@@ -16,8 +16,9 @@ const SavedProfilesPage = () => {
     name.split(' ').map((n) => n[0]).join('').toUpperCase();
 
   return (
-    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col min-w-0 px-[var(--page-padding-x)] pb-20 max-w-md mx-auto w-full">
+        <motion.div className="flex flex-col flex-1 min-h-0" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground mb-4"
@@ -26,12 +27,12 @@ const SavedProfilesPage = () => {
           <span className="text-sm">Back</span>
         </button>
 
-        <h1 className="text-2xl font-bold text-foreground mb-1">Saved Profiles</h1>
-        <p className="text-sm text-muted-foreground mb-6">
+        <h1 className="text-2xl font-bold text-foreground shrink-0">Saved Profiles</h1>
+        <p className="text-sm text-muted-foreground mb-4 shrink-0">
           Profiles you saved without sending a request
         </p>
 
-        <div className="space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
           {sorted.map((saved, i) => (
             <motion.div
               key={saved.id}
@@ -70,14 +71,15 @@ const SavedProfilesPage = () => {
         </div>
 
         {sorted.length === 0 && (
-          <div className="text-center py-16">
+          <div className="text-center py-8 flex-1 flex flex-col justify-center">
             <p className="text-muted-foreground">No saved profiles</p>
             <p className="text-xs text-muted-foreground mt-1">
               Tap &quot;Save Profile&quot; when viewing someone on the radar
             </p>
           </div>
         )}
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 };

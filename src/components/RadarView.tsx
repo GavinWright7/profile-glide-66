@@ -24,7 +24,10 @@ const RadarView = ({ users, isScanning, onUserTap }: RadarViewProps) => {
   };
 
   return (
-    <div className="relative w-full aspect-square max-w-[380px] mx-auto">
+    <div
+      className="relative w-full aspect-square mx-auto shrink-0"
+      style={{ maxWidth: 'var(--radar-max)', width: '100%' }}
+    >
       {/* Radar rings */}
       {[1, 2, 3].map((ring) => (
         <div

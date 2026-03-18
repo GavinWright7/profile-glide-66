@@ -1,5 +1,5 @@
 /**
- * bluetooth.ts — BLE scanning (Central role only) for Profile Glide.
+ * bluetooth.ts — BLE scanning (Central role only) for AirLinks.
  *
  * ⚠️  iOS advertising (Peripheral role) via BleAdvertiserPlugin is NOT used here.
  *     Peer discovery on iOS now uses MultipeerConnectivity (see src/utils/multipeer.ts).
@@ -15,7 +15,7 @@ import { Capacitor } from '@capacitor/core';
 import { BleAdvertiser } from './bleAdvertiser';
 
 // ── Service UUID ────────────────────────────────────────────────────────────
-// Must be identical on every device. Profile Glide custom UUID.
+// Must be identical on every device. AirLinks custom UUID.
 export const PG_SERVICE_UUID = 'E7810A71-73AE-499D-8C15-FAA9AEF0C3F2';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -109,8 +109,8 @@ export async function initializeBle(): Promise<boolean> {
 }
 
 /**
- * Start BLE scanning for nearby Profile Glide devices.
- * Filters for PG_SERVICE_UUID so only Profile Glide devices appear.
+ * Start BLE scanning for nearby AirLinks devices.
+ * Filters for PG_SERVICE_UUID so only AirLinks devices appear.
  * Temporarily pass an empty services array to see ALL nearby BLE devices
  * (useful when debugging why discovery isn't working).
  */

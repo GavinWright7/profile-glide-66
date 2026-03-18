@@ -2,6 +2,7 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const userService = require('../services/userService');
 const config = require('../config');
+const { signToken } = require('../utils/jwt');
 
 const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
 const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
@@ -23,21 +24,40 @@ function startLinkedInOAuth(req, res) {
   });
 
   const linkedInAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
+  console.log('[auth] LinkedIn OAuth start, redirect_uri=', config.LINKEDIN_REDIRECT_URI);
   res.redirect(linkedInAuthUrl);
+}
+
+/**
+ * Build the HTTPS redirect page URL safely. SFSafariViewController cannot handle
+ * 302 redirects to custom URL schemes (airlinks://), so we redirect to an HTTPS
+ * page that then opens airlinks:// via JavaScript.
+ */
+function buildRedirectPageUrl(params) {
+  const base = config.LINKEDIN_REDIRECT_URI.replace(/\/auth\/linkedin\/callback\/?(\?.*)?$/i, '');
+  const url = new URL('/auth/redirect', base);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v != null && String(v).length > 0) url.searchParams.set(k, String(v));
+  });
+  return url.toString();
 }
 
 async function handleLinkedInCallback(req, res) {
   const { code, error, error_description } = req.query;
+  console.log('[auth] LinkedIn callback received', { hasCode: !!code, hasError: !!error });
 
   if (error) {
-    console.error('LinkedIn OAuth error:', error, error_description);
-    return res.redirect(
-      `profileglide://auth?error=${encodeURIComponent(error_description || error)}`
-    );
+    const errMsg = (error_description || error || 'unknown_error').toString().trim();
+    console.error('[auth] LinkedIn OAuth error:', error, error_description);
+    const redirectUrl = buildRedirectPageUrl({ error: errMsg });
+    console.log('[auth] redirect (error path) ->', redirectUrl);
+    return res.redirect(redirectUrl);
   }
 
   if (!code) {
-    return res.redirect('profileglide://auth?error=missing_code');
+    const redirectUrl = buildRedirectPageUrl({ error: 'missing_code' });
+    console.log('[auth] redirect (no code) ->', redirectUrl);
+    return res.redirect(redirectUrl);
   }
 
   try {
@@ -87,18 +107,16 @@ async function handleLinkedInCallback(req, res) {
       interests,
     };
 
-    const sessionToken = jwt.sign(
-      { userId: userPayload.id, user: userPayload },
-      config.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    const deepLink = `profileglide://auth?token=${encodeURIComponent(sessionToken)}`;
-    res.redirect(deepLink);
+    const sessionToken = signToken({ userId: userPayload.id, user: userPayload });
+    const redirectUrl = buildRedirectPageUrl({ token: sessionToken });
+    console.log('[auth] token generated, redirect (success) ->', redirectUrl.replace(/token=[^&]+/, 'token=***'));
+    res.redirect(redirectUrl);
   } catch (err) {
-    console.error('LinkedIn auth error:', err?.response?.data || err.message);
-    const message = err?.response?.data?.error_description || 'Authentication failed';
-    res.redirect(`profileglide://auth?error=${encodeURIComponent(message)}`);
+    console.error('[auth] LinkedIn auth error:', err?.response?.data || err.message);
+    const message = (err?.response?.data?.error_description || err?.message || 'Authentication failed').toString().trim();
+    const redirectUrl = buildRedirectPageUrl({ error: message });
+    console.log('[auth] redirect (error path) ->', redirectUrl);
+    res.redirect(redirectUrl);
   }
 }
 
@@ -153,11 +171,7 @@ async function exchangeCode(req, res) {
       interests,
     };
 
-    const sessionToken = jwt.sign(
-      { userId: userPayload.id, user: userPayload },
-      config.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const sessionToken = signToken({ userId: userPayload.id, user: userPayload });
 
     res.json({ token: sessionToken, user: userPayload });
   } catch (err) {
@@ -170,14 +184,18 @@ async function exchangeCode(req, res) {
 function verifyToken(req, res) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[auth] validate: no token provided');
     return res.status(401).json({ error: 'No token provided' });
   }
 
   const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, config.JWT_SECRET);
+    console.log('[auth] validate: success userId=', payload.user?.id);
     res.json({ valid: true, user: payload.user });
-  } catch {
+  } catch (err) {
+    const reason = err?.name === 'TokenExpiredError' ? 'expired' : 'invalid';
+    console.log('[auth] validate: token', reason);
     res.status(401).json({ valid: false, error: 'Invalid or expired token' });
   }
 }
@@ -186,4 +204,58 @@ function generateState() {
   return Math.random().toString(36).substring(2, 15);
 }
 
-module.exports = { startLinkedInOAuth, handleLinkedInCallback, exchangeCode, verifyToken };
+/**
+ * Serves an HTTPS page that redirects to airlinks://auth.
+ * Required because SFSafariViewController cannot handle 302 redirects to custom URL schemes.
+ * Builds the custom URL using URLSearchParams for safe encoding.
+ */
+function serveRedirectPage(req, res) {
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  const error = typeof req.query.error === 'string' ? req.query.error.trim() : '';
+  const hasToken = token.length > 0;
+  const hasError = error.length > 0;
+
+  if (!hasToken && !hasError) {
+    console.warn('[auth] redirect page called without token or error');
+    return res.status(400).send('Missing token or error parameter');
+  }
+
+  // Build airlinks://auth URL using URLSearchParams (handles encoding)
+  const target = new URL('airlinks://auth');
+  if (hasToken) target.searchParams.set('token', token);
+  else target.searchParams.set('error', error);
+  const deepLink = target.toString();
+  console.log('[auth] serving redirect page, final URL:', deepLink.replace(/token=[^&]+/, 'token=***'));
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redirecting to AirLinks</title>
+</head>
+<body>
+  <p>Redirecting to AirLinks…</p>
+  <p><a id="fallback" href="#">Tap here if you're not redirected</a></p>
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get('token') || '';
+      var err = params.get('error') || '';
+      var target = new URL('airlinks://auth');
+      if (token) target.searchParams.set('token', token);
+      else if (err) target.searchParams.set('error', err);
+      else return;
+      var url = target.toString();
+      document.getElementById('fallback').href = url;
+      window.location.href = url;
+    })();
+  </script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}
+
+module.exports = { startLinkedInOAuth, handleLinkedInCallback, exchangeCode, verifyToken, serveRedirectPage };

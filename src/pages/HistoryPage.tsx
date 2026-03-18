@@ -20,11 +20,12 @@ const HistoryPage = () => {
   };
 
   return (
-    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-foreground mb-0">History</h1>
+    <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col min-w-0 px-[var(--page-padding-x)] pb-20 max-w-md mx-auto w-full">
+        <motion.div className="flex flex-col flex-1 min-h-0" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl font-bold text-foreground shrink-0">History</h1>
 
-        <div className="flex flex-col items-stretch my-3">
+        <div className="flex flex-col items-stretch my-3 shrink-0">
           <button
             onClick={() => navigate('/saved-profiles')}
             className="w-full glass-card p-4 flex items-center justify-between hover:bg-muted/30 transition-colors rounded-xl"
@@ -39,11 +40,11 @@ const HistoryPage = () => {
           </button>
         </div>
 
-        <p className="text-sm text-muted-foreground mb-6">
+        <p className="text-sm text-muted-foreground mb-4 shrink-0">
           Pending requests — swipe right when they accept
         </p>
 
-        <div className="space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
           {sorted.map((conn, i) => (
             <SwipeableHistoryItem
               key={conn.id}
@@ -56,14 +57,15 @@ const HistoryPage = () => {
         </div>
 
         {sorted.length === 0 && (
-          <div className="text-center py-16">
+          <div className="text-center py-8 flex-1 flex flex-col justify-center">
             <p className="text-muted-foreground">No pending requests</p>
             <p className="text-xs text-muted-foreground mt-1">
               Tap people on the radar and connect on LinkedIn
             </p>
           </div>
         )}
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 };

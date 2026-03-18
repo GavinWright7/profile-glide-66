@@ -9,13 +9,18 @@ import {
 import { StoreKit, isStoreKitAvailable } from '../utils/storeKit';
 
 export function useEntitlement() {
-  const { token } = useAuth();
+  const { token, isDemoUser } = useAuth();
   const [isPremium, setIsPremium] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!token) {
       setIsPremium(false);
+      setIsLoading(false);
+      return;
+    }
+    if (isDemoUser) {
+      setIsPremium(true);
       setIsLoading(false);
       return;
     }
@@ -26,7 +31,7 @@ export function useEntitlement() {
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [token, isDemoUser]);
 
   useEffect(() => {
     refresh();

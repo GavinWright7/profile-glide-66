@@ -6,6 +6,21 @@
 
 @layer base {
   :root {
+    /* Device-aware proportional sizing — scales with viewport for all iPhone sizes */
+    --page-padding-top: clamp(3rem, 6vh, 5rem);
+    --page-padding-x: clamp(0.75rem, 4vw, 1.5rem);
+    --section-gap: clamp(0.5rem, 2vh, 1.25rem);
+    --block-gap: clamp(1rem, 4vh, 2rem);
+    --icon-button-size: clamp(5rem, 22vw, 10rem);
+    --icon-button-size-home: clamp(7rem, 30.8vw, 14rem); /* 40% larger for Home wifi button */
+    --radar-max: min(380px, 85vw);
+    --nav-bottom-pad: env(safe-area-inset-bottom, 0px);
+    /* Scrollable selection box — used for interests, subcategories, goals, etc. */
+    --options-box-padding: clamp(0.75rem, 3vw, 1rem);
+    --selection-box-max-height: 50vh; /* fallback for older browsers */
+    /* Bottom padding for pages with fixed nav: nav height + safe area */
+    --submit-footer-pad: calc(5rem + env(safe-area-inset-bottom, 0px));
+
     --background: 220 20% 7%;
     --foreground: 210 20% 95%;
 
@@ -57,19 +72,38 @@
   }
 }
 
+@supports (height: 100dvh) {
+  :root {
+    --selection-box-max-height: 50dvh; /* Never exceed 50% of viewport — keeps submit button visible */
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
 }
 
-/* Page layout: title at top left (68px + safe area, 60px higher than before) */
+/* Page layout: device-aware header spacing */
 .page-with-header {
-  padding-top: calc(8rem - 60px + env(safe-area-inset-top, 0px));
+  padding-top: calc(var(--page-padding-top) + env(safe-area-inset-top, 0px));
+  padding-bottom: var(--nav-bottom-pad);
+}
+
+/* Full viewport height for mobile — 100dvh accounts for dynamic browser chrome */
+.app-viewport {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  height: 100%;
 }
 
 @layer utilities {

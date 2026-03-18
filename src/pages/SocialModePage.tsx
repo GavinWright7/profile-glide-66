@@ -54,8 +54,9 @@ export default function SocialModePage() {
   };
 
   return (
-    <div className="min-h-screen page-with-header p-6 pb-24 max-w-md mx-auto social-mode-page">
-      <div className="flex flex-col max-w-sm w-full mx-auto">
+    <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden social-mode-page">
+      <div className="flex-1 min-h-0 flex flex-col min-w-0 overflow-y-auto px-[var(--page-padding-x)] pb-20 max-w-md mx-auto w-full">
+        <div className="flex flex-col max-w-sm w-full mx-auto gap-[var(--section-gap)]">
         <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-foreground/80 hover:text-foreground mb-6 -mt-2 transition-colors"
@@ -115,6 +116,7 @@ export default function SocialModePage() {
             )}
           </form>
         )}
+        </div>
       </div>
     </div>
   );

@@ -52,7 +52,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 /** Redirects to onboarding if user has no interests, no valid linkedin_url, no professional background, or no goals. */
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isDemoUser } = useAuth();
   const location = useLocation();
   const isInterests = location.pathname === '/onboarding/interests';
   const isSubcategories = location.pathname === '/onboarding/subcategories';
@@ -61,6 +61,7 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const isGoals = location.pathname === '/onboarding/goals';
 
   if (isLoading) return null;
+  if (isDemoUser) return <>{children}</>;
   if (isInterests || isSubcategories || isLinkedIn || isProfessionalBackground || isGoals) return <>{children}</>;
 
   const hasInterests = Array.isArray(user?.interests) && user.interests.length >= 3;
@@ -75,7 +76,6 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
 
   const hasProfessionalBackground =
     user?.currentJobTitle?.trim() &&
-    user?.currentCompany?.trim() &&
     user?.almaMater?.trim();
   if (!hasProfessionalBackground) {
     return <Navigate to="/onboarding/professional-background" replace />;
@@ -96,7 +96,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <ConnectionsProvider>
-          <div className="flex flex-col min-h-screen">
+          <div className="flex flex-col min-h-[100dvh] min-h-[100vh] app-viewport">
             <SwipeableTabs>
               <Routes>
             <Route

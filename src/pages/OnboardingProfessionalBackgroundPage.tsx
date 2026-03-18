@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BACKEND_URL } from '../auth/authService';
+import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
 
 /**
@@ -35,14 +35,14 @@ const OnboardingProfessionalBackgroundPage = () => {
     setPastCompanies((prev) => prev.filter((c) => c !== company));
   };
 
-  const canContinue = currentJobTitle.trim() && currentCompany.trim() && almaMater.trim();
+  const canContinue = currentJobTitle.trim() && almaMater.trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!canContinue) {
-      setError('Please fill in all required fields.');
+      setError('Please fill in job title and alma mater.');
       return;
     }
 
@@ -53,18 +53,11 @@ const OnboardingProfessionalBackgroundPage = () => {
 
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/profile/professional-background`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          currentJobTitle: currentJobTitle.trim(),
-          currentCompany: currentCompany.trim(),
-          almaMater: almaMater.trim(),
-          pastCompanies,
-        }),
+      const res = await apiPut('/profile/professional-background', {
+        currentJobTitle: currentJobTitle.trim(),
+        currentCompany: currentCompany.trim() || null,
+        almaMater: almaMater.trim(),
+        pastCompanies,
       });
 
       const data = await res.json();
@@ -85,7 +78,10 @@ const OnboardingProfessionalBackgroundPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 pb-24">
+    <div
+      className="flex-1 min-h-0 flex flex-col items-center justify-center px-[var(--page-padding-x)] pb-20"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
       <motion.div
         className="w-full max-w-sm"
         initial={{ opacity: 0, y: 20 }}
@@ -108,7 +104,7 @@ const OnboardingProfessionalBackgroundPage = () => {
             </label>
             <Input
               type="text"
-              placeholder="e.g. Product Manager"
+              placeholder="ex: Product Manager, Full-Time Student, etc."
               value={currentJobTitle}
               onChange={(e) => setCurrentJobTitle(e.target.value)}
               className="font-medium"
@@ -119,7 +115,7 @@ const OnboardingProfessionalBackgroundPage = () => {
 
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Current Company <span className="text-destructive">*</span>
+              Current Company <span className="text-muted-foreground/70">(optional)</span>
             </label>
             <Input
               type="text"
@@ -134,7 +130,7 @@ const OnboardingProfessionalBackgroundPage = () => {
 
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Alma Mater <span className="text-destructive">*</span>
+              Alma Mater / Current School <span className="text-destructive">*</span>
             </label>
             <Input
               type="text"

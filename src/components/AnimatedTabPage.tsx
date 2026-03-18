@@ -14,8 +14,8 @@ export default function AnimatedTabPage({ children }: { children: React.ReactNod
   const slideDistance = typeof window !== 'undefined' ? window.innerWidth : 0;
 
   return (
-    <div style={{ overflow: 'hidden', width: '100%' }}>
-      <motion.div
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden w-full">
+      <motion.div className="flex-1 min-h-0 flex flex-col min-w-0"
         key={location.pathname}
         initial={{
           x: dir === 1 ? slideDistance : dir === -1 ? -slideDistance : 0,
