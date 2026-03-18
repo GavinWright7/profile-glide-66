@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Filter, List, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import RadarView from '@/components/RadarView';
 import ProfileCard from '@/components/ProfileCard';
 import PremiumPaywall from '@/components/PremiumPaywall';
+import { DirectionArrow } from '@/components/DirectionArrow';
 import { NearbyUser } from '@/data/mockUsers';
 import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
+import { useDeviceHeading } from '../hooks/useDeviceHeading';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { NearbyShareUser } from '../utils/sharing';
 import { useAuth } from '../context/AuthContext';
@@ -125,6 +127,20 @@ const RadarPage = () => {
       ? sharing.nearbyUsers.map((u, i) => shareUserToRadarUser(u, i))
       : [];
 
+  const { heading, available: compassAvailable, error: compassError } = useDeviceHeading();
+
+  /** Target for directional arrow: selected user if any, else closest. Must have lat/lng. */
+  const directionTarget = useMemo((): NearbyShareUser | null => {
+    const users = sharing.nearbyUsers;
+    if (users.length === 0) return null;
+    if (selectedUser) {
+      const match = users.find((u) => u.userId === selectedUser.id);
+      if (match && match.latitude != null && match.longitude != null) return match;
+    }
+    const closest = users[0];
+    return closest?.latitude != null && closest?.longitude != null ? closest : null;
+  }, [sharing.nearbyUsers, selectedUser]);
+
   const statusMessage = (() => {
     if (hasActiveFilters) {
       return `Filtering for connections in ${subcategories.join(', ')}`;
@@ -185,14 +201,14 @@ const RadarPage = () => {
         <h1 className="text-2xl font-bold text-foreground">Discover</h1>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col justify-center px-[var(--page-padding-x)]">
+      <div className="flex-1 min-h-0 flex flex-col justify-center px-[var(--page-padding-x)] -mt-[168px]">
         <div className="flex flex-col items-center w-full max-w-md mx-auto">
           {/* 1. Top controls section — tightly grouped, 8px between elements */}
           <div className="flex flex-col items-center gap-2 shrink-0 relative z-20">
             <div className="flex items-center justify-center gap-1.5">
               <div
                 className={`w-1.5 h-1.5 rounded-full ${
-                  sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'
+                  sharing.isSharing ? 'bg-success' : 'bg-muted-foreground'
                 }`}
               />
               <span className="text-[10px] text-muted-foreground font-medium">
@@ -248,6 +264,23 @@ const RadarPage = () => {
                   : 'No users nearby'
                 : `${radarUsers.length} ${radarUsers.length === 1 ? 'person' : 'people'} nearby`}
             </p>
+
+            {/* Directional arrow — points toward selected/closest user */}
+            {radarUsers.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground">No nearby users to point to yet</p>
+            ) : directionTarget && sharing.currentLocation ? (
+              <DirectionArrow
+                myLocation={sharing.currentLocation}
+                targetLocation={{
+                  lat: directionTarget.latitude!,
+                  lng: directionTarget.longitude!,
+                }}
+                heading={heading}
+                targetName={directionTarget.fullName || 'nearby person'}
+                compassAvailable={compassAvailable}
+                compassError={compassError}
+              />
+            ) : null}
           </div>
 
           {/* 2. Radar section — 16px gap above/below, main focal point */}

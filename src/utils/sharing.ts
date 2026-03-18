@@ -52,6 +52,9 @@ export interface NearbyShareUser {
   distanceMeters: number;
   interests?:     string[];
   relevanceScore?: number;
+  /** Coordinates for directional arrow (from Redis GEO). */
+  latitude?:      number;
+  longitude?:     number;
 }
 
 export interface SharingFilters {

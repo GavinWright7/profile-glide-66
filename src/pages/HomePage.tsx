@@ -105,8 +105,8 @@ const HomePage = () => {
                   {[0, 1, 2].map((i) => (
                     <motion.div
                       key={i}
-                      className="absolute inset-0 rounded-full border-2 border-primary/20"
-                      initial={{ scale: 1, opacity: 0.5 }}
+                      className="absolute inset-0 rounded-full border-2 border-primary/60"
+                      initial={{ scale: 1, opacity: 0.6 }}
                       animate={{ scale: 2.2, opacity: 0 }}
                       transition={{
                         duration: 2,
@@ -128,7 +128,7 @@ const HomePage = () => {
             {/* Discoverable + text — mt-20 keeps below blue wave range (waves scale to 2.2x) */}
             <div className="flex flex-col items-center w-full gap-[var(--section-gap)] mt-20 max-w-sm">
               <div className="flex items-center justify-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+                <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success' : 'bg-muted-foreground'}`} />
                 <h2 className="text-2xl font-bold text-foreground">
                   {sharing.isSharing ? 'Discoverable' : 'Not Sharing'}
                 </h2>

@@ -11,6 +11,8 @@ PODS:
   - CapacitorGeolocation (7.1.8):
     - Capacitor
     - IONGeolocationLib (= 1.0.1)
+  - CapgoCapacitorCompass (7.1.1):
+    - Capacitor
   - IONGeolocationLib (1.0.1)
 
 DEPENDENCIES:
@@ -20,6 +22,7 @@ DEPENDENCIES:
   - "CapacitorCommunityBluetoothLe (from `../../node_modules/@capacitor-community/bluetooth-le`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
+  - "CapgoCapacitorCompass (from `../../node_modules/@capgo/capacitor-compass`)"
 
 SPEC REPOS:
   trunk:
@@ -38,6 +41,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorGeolocation:
     :path: "../../node_modules/@capacitor/geolocation"
+  CapgoCapacitorCompass:
+    :path: "../../node_modules/@capgo/capacitor-compass"
 
 SPEC CHECKSUMS:
   Capacitor: 6e644e9e3369368ac601c77a0fad57f34b78aaa6
@@ -46,8 +51,9 @@ SPEC CHECKSUMS:
   CapacitorCommunityBluetoothLe: 9aa29c1555fbe797e6b595db824c2acd39a5bdf5
   CapacitorCordova: f163aa2e84b79efc54d6a75b305bc7e05fb80c5d
   CapacitorGeolocation: ab54d708e2fcf99a7bafe0219eaa6f7a932f001a
+  CapgoCapacitorCompass: 05ef63dfd44598d070c366613ab0daa9eac42249
   IONGeolocationLib: 20f9d0248a0b5264511fb57a37e25dd2badf797a
 
-PODFILE CHECKSUM: 98ad1592f5bb18aa35f48f434dfc8b095aa1e9e8
+PODFILE CHECKSUM: f4e56bd65c6927896721d4b52c98a9e2d132e638
 
 COCOAPODS: 1.16.2

@@ -42,15 +42,15 @@ const RadarView = ({ users, isScanning, onUserTap }: RadarViewProps) => {
         />
       ))}
 
-      {/* Pulse rings when scanning */}
+      {/* Pulse rings when scanning — calm waves only, no sweep line or bright blinks */}
       {isScanning && (
         <>
           {[0, 1, 2].map((i) => (
             <motion.div
               key={`pulse-${i}`}
-              className="absolute rounded-full border-2 border-primary/30"
+              className="absolute rounded-full border-2 border-primary/60"
               style={{ width: '100%', height: '100%', left: 0, top: 0 }}
-              initial={{ scale: 0.3, opacity: 0.8 }}
+              initial={{ scale: 0.3, opacity: 0.6 }}
               animate={{ scale: 1, opacity: 0 }}
               transition={{
                 duration: 3,
@@ -61,20 +61,6 @@ const RadarView = ({ users, isScanning, onUserTap }: RadarViewProps) => {
             />
           ))}
         </>
-      )}
-
-      {/* Sweep line */}
-      {isScanning && (
-        <motion.div
-          className="absolute w-1/2 h-[2px] origin-left"
-          style={{
-            left: '50%',
-            top: '50%',
-            background: 'linear-gradient(90deg, hsl(var(--primary) / 0.6), transparent)',
-          }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
-        />
       )}
 
       {/* Center dot (you) */}

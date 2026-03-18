@@ -151,17 +151,26 @@ async function getNearby(req, res) {
       return res.status(403).json({ error: 'Premium required for radar filters', requiresPremium: true });
     }
 
-    const raw = await redis.redisGeoSearch(lon, lat, radiusMeters, 50);
+    const raw = await redis.redisGeoSearchWithCoords(lon, lat, radiusMeters, 50);
     const allEntries = Array.isArray(raw)
-      ? raw.map((r) => (Array.isArray(r) ? [r[0], parseFloat(r[1]) || 0] : [r, 0]))
+      ? raw.map((r) => {
+          if (!Array.isArray(r)) return [r, 0, null];
+          const id = r[0];
+          const dist = parseFloat(r[1]) || 0;
+          const coord = r[2];
+          const latLng = coord && Array.isArray(coord) && coord.length >= 2
+            ? { latitude: parseFloat(coord[1]), longitude: parseFloat(coord[0]) }
+            : null;
+          return [id, dist, latLng];
+        })
       : [];
 
     const r = redis.getRedis();
     const entries = [];
-    for (const [id, dist] of allEntries) {
+    for (const [id, dist, latLng] of allEntries) {
       if (!id || id === userId) continue;
       const hasSession = await r.exists(`${config.REDIS_SESSION_PREFIX}${id}`);
-      if (hasSession) entries.push([id, dist]);
+      if (hasSession) entries.push([id, dist, latLng]);
     }
 
     const nearbyUserIds = entries.map(([id]) => id);
@@ -179,13 +188,13 @@ async function getNearby(req, res) {
 
     let users = entries
       .filter(([id]) => id !== userId)
-      .map(([id, dist]) => {
+      .map(([id, dist, latLng]) => {
         const profile = profileByUserId[id];
         const interests = profile?.interests || [];
         const relevanceScore = computeRelevanceScore(myInterests, interests);
         const headline = profile?.headline || '';
         const jobTitle = headline.split(' at ')[0]?.trim() || '';
-        return {
+        const u = {
           userId: id,
           fullName: profile?.full_name || '',
           headline,
@@ -196,6 +205,11 @@ async function getNearby(req, res) {
           interests: interests,
           relevanceScore,
         };
+        if (latLng) {
+          u.latitude = latLng.latitude;
+          u.longitude = latLng.longitude;
+        }
+        return u;
       });
 
     if (hasFilters) {

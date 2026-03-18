@@ -72,6 +72,24 @@ async function redisGeoSearch(lon, lat, radiusMeters, limit = 50) {
   return raw;
 }
 
+/** Same as redisGeoSearch but includes coordinates for each result. Returns [ [id, dist, [lon, lat]], ... ]. */
+async function redisGeoSearchWithCoords(lon, lat, radiusMeters, limit = 50) {
+  const r = getRedis();
+  const raw = await r.georadius(
+    config.REDIS_GEO_KEY,
+    lon,
+    lat,
+    radiusMeters,
+    'm',
+    'WITHDIST',
+    'WITHCOORD',
+    'ASC',
+    'COUNT',
+    limit
+  );
+  return raw;
+}
+
 async function redisRefreshTtl(userId) {
   const r = getRedis();
   await r.setex(`${config.REDIS_SESSION_PREFIX}${userId}`, config.REDIS_SESSION_TTL, Date.now().toString());
@@ -92,6 +110,7 @@ module.exports = {
   redisGeoAdd,
   redisGeoRemove,
   redisGeoSearch,
+  redisGeoSearchWithCoords,
   redisRefreshTtl,
   redisHealthCheck,
 };
