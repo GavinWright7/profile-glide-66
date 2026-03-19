@@ -58,3 +58,20 @@ export function relativeArrowAngle(phoneHeading: number, targetBearing: number):
   while (rel < -180) rel += 360;
   return rel;
 }
+
+/**
+ * Move point A toward point B by a fraction (0–1). Used for simulated approach.
+ * fraction 0.05 = move 5% of the way toward B.
+ */
+export function interpolateToward(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number,
+  fraction: number
+): { lat: number; lng: number } {
+  return {
+    lat: fromLat + (toLat - fromLat) * fraction,
+    lng: fromLng + (toLng - fromLng) * fraction,
+  };
+}

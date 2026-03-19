@@ -3,13 +3,14 @@
  * Shows radar with single target dot, directional arrow, and back to list.
  */
 
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { NearbyShareUser } from '../utils/sharing';
-import { DirectionArrow } from './DirectionArrow';
 import { useDeviceHeading } from '../hooks/useDeviceHeading';
 import { useSharing } from '../hooks/useSharing';
-import { bearingDegrees, relativeArrowAngle, distanceMeters } from '../utils/geo';
+import { useWatchPosition } from '../hooks/useWatchPosition';
+import { bearingDegrees, relativeArrowAngle, distanceMeters, interpolateToward } from '../utils/geo';
 
 export interface FindPersonRadarScreenProps {
   target: NearbyShareUser;
@@ -19,6 +20,9 @@ export interface FindPersonRadarScreenProps {
 
 const FIXED_TARGET_RADIUS = 35;
 const FACE_THRESHOLD_DEG = 18;
+/** Simulated approach: move this fraction toward target every tick (demo only). */
+const SIMULATE_FRACTION_PER_TICK = 0.025;
+const SIMULATE_INTERVAL_MS = 2000;
 
 function getInitials(name: string) {
   return name
@@ -41,7 +45,43 @@ export function FindPersonRadarScreen({
 }: FindPersonRadarScreenProps) {
   const { heading, available: compassAvailable, error: compassError } = useDeviceHeading();
   const sharing = useSharing();
-  const myLocation = sharing.currentLocation ?? myLocationProp;
+  const { location: watchLocation } = useWatchPosition();
+  const [simulatedLocation, setSimulatedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const simBaseRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Base location: real GPS when available
+  const baseLocation = watchLocation ?? sharing.currentLocation ?? myLocationProp;
+
+  // Simulated approach for demo users: when no real movement, simulate walking toward target
+  const isMockTarget = target.userId.startsWith('mock-dev-');
+  const shouldSimulate = import.meta.env.DEV && isMockTarget && !!targetLocation;
+
+  useEffect(() => {
+    if (!shouldSimulate || !targetLocation) return;
+    // Initialize simulation from current base
+    simBaseRef.current = baseLocation;
+    setSimulatedLocation(baseLocation);
+    const id = setInterval(() => {
+      setSimulatedLocation((prev) => {
+        const from = prev ?? simBaseRef.current ?? baseLocation;
+        const next = interpolateToward(
+          from.lat,
+          from.lng,
+          targetLocation.lat,
+          targetLocation.lng,
+          SIMULATE_FRACTION_PER_TICK
+        );
+        const dist = distanceMeters(next.lat, next.lng, targetLocation.lat, targetLocation.lng);
+        if (dist < 3) return from; // Stop when within 3 m
+        return next;
+      });
+    }, SIMULATE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [shouldSimulate, targetLocation?.lat, targetLocation?.lng, baseLocation.lat, baseLocation.lng]);
+
+  // Prefer live watch; when simulating (no real movement), use simulated position for distance
+  const myLocation =
+    watchLocation ?? (shouldSimulate && simulatedLocation ? simulatedLocation : null) ?? sharing.currentLocation ?? myLocationProp;
 
   const hasCoords = target.latitude != null && target.longitude != null;
   const targetLocation = hasCoords
@@ -176,25 +216,25 @@ export function FindPersonRadarScreen({
             ))}
           </div>
 
-          {/* Center: You circle (prominent, always visible) */}
+          {/* Center: You circle + small blue triangle at north top — fixed, never rotates */}
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-            <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center glow-ring border-2 border-primary/80">
-              <span className="text-primary-foreground text-sm font-semibold">You</span>
-            </div>
-          </div>
-
-          {/* Directional arrow below You circle */}
-          <div className="absolute left-1/2 top-[calc(50%+40px)] -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
-            {targetLocation && (
-              <DirectionArrow
-                myLocation={myLocation}
-                targetLocation={targetLocation}
-                heading={heading}
-                targetName={target.fullName || 'person'}
-                compassAvailable={compassAvailable}
-                compassError={compassError}
+            <div className="relative">
+              <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center glow-ring border-2 border-primary/80">
+                <span className="text-primary-foreground text-sm font-semibold">You</span>
+              </div>
+              {/* Small blue triangle pointing north, base flush with circle top — seamless */}
+              <div
+                className="absolute left-1/2 -translate-x-1/2"
+                style={{
+                  top: '-10px',
+                  width: 0,
+                  height: 0,
+                  borderLeft: '7px solid transparent',
+                  borderRight: '7px solid transparent',
+                  borderBottom: '10px solid hsl(var(--primary))',
+                }}
               />
-            )}
+            </div>
           </div>
 
           {/* Target person dot */}
@@ -226,7 +266,7 @@ export function FindPersonRadarScreen({
         {!isFacing && (
           <p className="text-[10px] text-muted-foreground text-center mt-4 max-w-[260px]">
             {compassAvailable
-              ? 'Turn until the arrow points up, then walk straight'
+              ? 'Turn until the person is directly above you, then walk straight'
               : compassError || 'Compass unavailable — turn your phone to orient'}
           </p>
         )}
