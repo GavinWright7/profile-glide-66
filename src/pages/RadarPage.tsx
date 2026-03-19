@@ -1,15 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Filter, List, X } from 'lucide-react';
+import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import RadarView from '@/components/RadarView';
 import ProfileCard from '@/components/ProfileCard';
 import PremiumPaywall from '@/components/PremiumPaywall';
-import { DirectionArrow } from '@/components/DirectionArrow';
+import { NearbyUserListCard } from '@/components/NearbyUserListCard';
+import { FindPersonRadarScreen } from '@/components/FindPersonRadarScreen';
+import { PersonActionSheet } from '@/components/PersonActionSheet';
 import { NearbyUser } from '@/data/mockUsers';
 import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
-import { useDeviceHeading } from '../hooks/useDeviceHeading';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { NearbyShareUser } from '../utils/sharing';
 import { useAuth } from '../context/AuthContext';
@@ -17,25 +17,24 @@ import { useConnections } from '../context/ConnectionsContext';
 import { apiRequest } from '../api/client';
 
 /**
- * Convert a backend NearbyShareUser to the NearbyUser shape RadarView expects.
+ * Convert NearbyShareUser to NearbyUser for ProfileCard.
  */
 function shareUserToRadarUser(user: NearbyShareUser, index: number): NearbyUser {
-  const parts    = user.headline?.split(' at ') ?? [];
+  const parts = user.headline?.split(' at ') ?? [];
   const jobTitle = parts[0]?.trim() ?? '';
-  const company  = parts[1]?.trim() ?? '';
+  const company = parts[1]?.trim() ?? '';
   const distance = Math.max(0.5, Math.min(10, user.distanceMeters / 15.24));
-
   return {
-    id:                 user.userId,
-    name:               user.fullName || 'Unknown',
-    headline:           user.headline || '',
+    id: user.userId,
+    name: user.fullName || 'Unknown',
+    headline: user.headline || '',
     company,
     jobTitle,
-    profilePhotoUrl:    user.photoUrl || '',
+    profilePhotoUrl: user.photoUrl || '',
     linkedinProfileUrl: user.linkedinUrl || '',
-    linkedinId:         user.userId,
+    linkedinId: user.userId,
     distance,
-    angle:              (index * 73 + 20) % 360,
+    angle: (index * 73 + 20) % 360,
   };
 }
 
@@ -59,10 +58,11 @@ const SUBCATEGORIES_BY_INDUSTRY: Record<string, string[]> = {
 
 const RadarPage = () => {
   const [selectedUser, setSelectedUser] = useState<NearbyUser | null>(null);
+  const [actionSheetUser, setActionSheetUser] = useState<NearbyShareUser | null>(null);
+  const [findingUser, setFindingUser] = useState<NearbyShareUser | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<string | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [listViewOpen, setListViewOpen] = useState(false);
   const sharing = useSharing();
   const { token, isDemoUser } = useAuth();
   const { addConnection, addSavedProfile } = useConnections();
@@ -70,10 +70,9 @@ const RadarPage = () => {
 
   const subcategories = sharing.filters?.subcategories ?? [];
   const hasActiveFilters = subcategories.length > 0;
+  const nearbyUsers = sharing.nearbyUsers;
 
-  const allSubcategories = [...new Set(
-    Object.values(SUBCATEGORIES_BY_INDUSTRY).flat()
-  )].sort();
+  const allSubcategories = [...new Set(Object.values(SUBCATEGORIES_BY_INDUSTRY).flat())].sort();
 
   useEffect(() => {
     sharing.setPremiumRadius(isPremium);
@@ -122,47 +121,20 @@ const RadarPage = () => {
     sharing.setSortBy('distance');
   };
 
-  const radarUsers: NearbyUser[] =
-    sharing.nearbyUsers.length > 0
-      ? sharing.nearbyUsers.map((u, i) => shareUserToRadarUser(u, i))
-      : [];
+  const handlePersonTap = (user: NearbyShareUser) => {
+    setActionSheetUser(user);
+  };
 
-  const { heading, available: compassAvailable, error: compassError } = useDeviceHeading();
+  const handleFindThisPerson = (user: NearbyShareUser) => {
+    setFindingUser(user);
+    setActionSheetUser(null);
+  };
 
-  /** Target for directional arrow: selected user if any, else closest. Must have lat/lng. */
-  const directionTarget = useMemo((): NearbyShareUser | null => {
-    const users = sharing.nearbyUsers;
-    if (users.length === 0) return null;
-    if (selectedUser) {
-      const match = users.find((u) => u.userId === selectedUser.id);
-      if (match && match.latitude != null && match.longitude != null) return match;
-    }
-    const closest = users[0];
-    return closest?.latitude != null && closest?.longitude != null ? closest : null;
-  }, [sharing.nearbyUsers, selectedUser]);
-
-  const statusMessage = (() => {
-    if (hasActiveFilters) {
-      return `Filtering for connections in ${subcategories.join(', ')}`;
-    }
-    if (sharing.sortBy === 'relevance') {
-      return 'Showing best matches by field, shared interests, and background';
-    }
-    return 'Finding connections closest to you';
-  })();
-
-  useEffect(() => {
-    if (selectedUser && token && !isDemoUser) {
-      apiRequest('/interactions/event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUserId: selectedUser.id,
-          eventType: 'card_opened',
-        }),
-      }).catch(() => {});
-    }
-  }, [selectedUser?.id, token]);
+  const handleViewProfile = (user: NearbyShareUser) => {
+    const idx = nearbyUsers.findIndex((u) => u.userId === user.userId);
+    setSelectedUser(shareUserToRadarUser(user, idx >= 0 ? idx : 0));
+    setActionSheetUser(null);
+  };
 
   const handleConnect = async (u: NearbyUser, didConnect?: boolean) => {
     if (token && !isDemoUser) {
@@ -189,8 +161,24 @@ const RadarPage = () => {
     setSelectedUser(null);
   };
 
-  const getInitials = (name: string) =>
-    name.split(' ').map((n) => n[0]).join('').toUpperCase();
+  useEffect(() => {
+    if (selectedUser && token && !isDemoUser) {
+      apiRequest('/interactions/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUserId: selectedUser.id,
+          eventType: 'card_opened',
+        }),
+      }).catch(() => {});
+    }
+  }, [selectedUser?.id, token]);
+
+  const statusMessage = (() => {
+    if (hasActiveFilters) return `Filtering for ${subcategories.join(', ')}`;
+    if (sharing.sortBy === 'relevance') return 'Showing best matches';
+    return 'Sorted by distance';
+  })();
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -201,121 +189,116 @@ const RadarPage = () => {
         <h1 className="text-2xl font-bold text-foreground">Discover</h1>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col justify-center px-[var(--page-padding-x)] -mt-[168px]">
-        <div className="flex flex-col items-center w-full max-w-md mx-auto">
-          {/* 1. Top controls section — tightly grouped, 8px between elements */}
-          <div className="flex flex-col items-center gap-2 shrink-0 relative z-20">
-            <div className="flex items-center justify-center gap-1.5">
-              <div
-                className={`w-1.5 h-1.5 rounded-full ${
-                  sharing.isSharing ? 'bg-success' : 'bg-muted-foreground'
-                }`}
-              />
-              <span className="text-[10px] text-muted-foreground font-medium">
-                {sharing.isSharing ? 'Discovering people nearby' : 'Not sharing'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleSortBy('distance')}
-                className={`text-[11px] px-3 py-1.5 rounded-full transition-colors ${
-                  sharing.sortBy === 'distance' && !hasActiveFilters
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                Distance
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSortBy('relevance')}
-                className={`text-[11px] px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 ${
-                  sharing.sortBy === 'relevance'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                Best matches {!isPremium && '🔒'}
-              </button>
-              <button
-                type="button"
-                onClick={handleFiltersClick}
-                className={`text-[11px] px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer touch-manipulation ${
-                  filtersOpen || hasActiveFilters
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/90'
-                }`}
-              >
-                <Filter size={10} />
-                Filters{hasActiveFilters ? ` (${subcategories.length})` : ''} {!isPremium && '🔒'}
-              </button>
-            </div>
-
-            <p className="text-[10px] text-muted-foreground text-center max-w-[280px] leading-tight min-h-[28px] flex items-center justify-center">
-              {statusMessage}
-            </p>
-
-            <p className="text-xs font-semibold text-foreground">
-              {radarUsers.length === 0
-                ? sharing.isSharing
-                  ? 'Searching…'
-                  : 'No users nearby'
-                : `${radarUsers.length} ${radarUsers.length === 1 ? 'person' : 'people'} nearby`}
-            </p>
-
-            {/* Directional arrow — points toward selected/closest user */}
-            {radarUsers.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground">No nearby users to point to yet</p>
-            ) : directionTarget && sharing.currentLocation ? (
-              <DirectionArrow
-                myLocation={sharing.currentLocation}
-                targetLocation={{
-                  lat: directionTarget.latitude!,
-                  lng: directionTarget.longitude!,
-                }}
-                heading={heading}
-                targetName={directionTarget.fullName || 'nearby person'}
-                compassAvailable={compassAvailable}
-                compassError={compassError}
-              />
-            ) : null}
-          </div>
-
-          {/* 2. Radar section — 16px gap above/below, main focal point */}
-          <div className="flex justify-center items-center w-full py-4 shrink-0">
-            <RadarView
-              users={radarUsers}
-              isScanning={sharing.isSharing}
-              onUserTap={setSelectedUser}
+      <div className="flex-1 min-h-0 flex flex-col px-[var(--page-padding-x)]">
+        {/* Top controls */}
+        <div className="shrink-0 flex flex-col gap-2 pb-4">
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`w-1.5 h-1.5 rounded-full ${
+                sharing.isSharing ? 'bg-success' : 'bg-muted-foreground'
+              }`}
             />
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {sharing.isSharing ? 'Discovering people nearby' : 'Not sharing'}
+            </span>
           </div>
 
-          {/* 3. Bottom status section — 12px from radar, tucks under it */}
-          <p className="text-center text-[10px] text-muted-foreground pt-3 shrink-0">
-            {radarUsers.length > 0
-              ? 'Tap a person to view their profile'
-              : sharing.isSharing
-                ? 'Waiting for nearby users…'
-                : 'No users available yet. Go back and tap Start Sharing to broadcast.'}
-          </p>
-
-          {/* 4. View list button — below tap hint */}
-          {radarUsers.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
-              onClick={() => setListViewOpen(true)}
-              className="mt-3 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-sm font-medium"
+              onClick={() => handleSortBy('distance')}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors ${
+                sharing.sortBy === 'distance' && !hasActiveFilters
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
             >
-              <List size={16} />
-              View list
+              Distance
             </button>
+            <button
+              type="button"
+              onClick={() => handleSortBy('relevance')}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 ${
+                sharing.sortBy === 'relevance'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              Best matches {!isPremium && '🔒'}
+            </button>
+            <button
+              type="button"
+              onClick={handleFiltersClick}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer touch-manipulation ${
+                filtersOpen || hasActiveFilters
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/90'
+              }`}
+            >
+              <Filter size={10} />
+              Filters{hasActiveFilters ? ` (${subcategories.length})` : ''} {!isPremium && '🔒'}
+            </button>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground">{statusMessage}</p>
+        </div>
+
+        {/* Nearby people list — primary content */}
+        <div
+          className="flex-1 min-h-0 overflow-y-auto"
+          style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+        >
+          {nearbyUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+              <p className="text-sm font-medium text-muted-foreground">
+                {sharing.isSharing
+                  ? 'Searching for people nearby…'
+                  : 'No users nearby'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2 max-w-[260px]">
+                {sharing.isSharing
+                  ? 'Make sure you have location access and Start Sharing is on.'
+                  : 'Go to Home and tap Start Sharing to broadcast your profile.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-w-md mx-auto">
+              {nearbyUsers.map((user) => (
+                <NearbyUserListCard
+                  key={user.userId}
+                  user={user}
+                  onTap={() => handlePersonTap(user)}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Filter overlay — centered modal with blur backdrop */}
+      {/* Find Person radar screen — secondary state */}
+      <AnimatePresence>
+        {findingUser && sharing.currentLocation && (
+          <FindPersonRadarScreen
+            target={findingUser}
+            myLocation={sharing.currentLocation}
+            onBack={() => setFindingUser(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Person action sheet */}
+      <AnimatePresence>
+        {actionSheetUser && (
+          <PersonActionSheet
+            user={actionSheetUser}
+            onFindThisPerson={() => handleFindThisPerson(actionSheetUser)}
+            onViewProfile={() => handleViewProfile(actionSheetUser)}
+            onClose={() => setActionSheetUser(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Filter overlay */}
       <AnimatePresence>
         {isPremium && filtersOpen && (
           <motion.div
@@ -334,12 +317,9 @@ const RadarPage = () => {
               className="w-full max-w-sm max-h-[70vh] overflow-hidden rounded-2xl border border-border bg-background shadow-xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header */}
               <p className="text-[10px] font-medium text-muted-foreground mb-3 px-4 pt-4 shrink-0">
                 Filter by subcategory
               </p>
-
-              {/* Scrollable options box */}
               <div className="flex-1 min-h-0 overflow-y-auto px-4">
                 {allSubcategories.length > 0 ? (
                   <div className="flex flex-wrap gap-2 pb-4">
@@ -359,22 +339,14 @@ const RadarPage = () => {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground pb-4">
-                    No subcategories available.
-                  </p>
+                  <p className="text-[11px] text-muted-foreground pb-4">No subcategories available.</p>
                 )}
               </div>
-
-              {/* Fixed Done button — always visible, respects safe area */}
               <div
                 className="shrink-0 px-4 pb-4 pt-2 border-t border-border"
                 style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
               >
-                <Button
-                  type="button"
-                  className="w-full"
-                  onClick={() => setFiltersOpen(false)}
-                >
+                <Button type="button" className="w-full" onClick={() => setFiltersOpen(false)}>
                   Done
                 </Button>
               </div>
@@ -383,6 +355,7 @@ const RadarPage = () => {
         )}
       </AnimatePresence>
 
+      {/* Profile card */}
       <AnimatePresence>
         {selectedUser && (
           <ProfileCard
@@ -397,76 +370,14 @@ const RadarPage = () => {
         )}
       </AnimatePresence>
 
-      {/* List view overlay — drag up to view all profiles, no radar, YOU circle at top center */}
-      <AnimatePresence>
-        {listViewOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-background flex flex-col"
-          >
-            <div
-              className="shrink-0 flex items-center justify-between px-4 pb-3 border-b border-border"
-              style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
-            >
-              <h2 className="text-lg font-semibold text-foreground">View list</h2>
-              <button
-                type="button"
-                onClick={() => setListViewOpen(false)}
-                className="p-2 -m-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* YOU circle at top center — fixed, list scrolls below with padding so nothing goes under it */}
-            <div className="shrink-0 flex justify-center py-6">
-              <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center glow-ring">
-                <span className="text-primary-foreground text-sm font-semibold">You</span>
-              </div>
-            </div>
-
-            <div
-              className="flex-1 min-h-0 overflow-y-auto px-4"
-              style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}
-            >
-              <div className="space-y-2">
-                {radarUsers.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedUser(user);
-                      setListViewOpen(false);
-                    }}
-                    className="w-full glass-card p-4 flex items-center gap-4 text-left hover:bg-muted/30 transition-colors rounded-xl"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-secondary border-2 border-primary/40 flex items-center justify-center shrink-0">
-                      <span className="text-foreground text-sm font-semibold">
-                        {getInitials(user.name)}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-semibold text-foreground truncate">
-                        {user.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {user.headline || `${user.jobTitle} at ${user.company}`}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      {/* Premium paywall */}
       <AnimatePresence>
         {showPaywall && !isPremium && (
           <PremiumPaywall
-            onClose={() => { setShowPaywall(false); setPaywallFeature(undefined); }}
+            onClose={() => {
+              setShowPaywall(false);
+              setPaywallFeature(undefined);
+            }}
             feature={paywallFeature}
           />
         )}
