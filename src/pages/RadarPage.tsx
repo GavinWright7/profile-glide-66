@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { NearbyShareUser } from '../utils/sharing';
+import { shouldUseMockNearbyUsers, generateMockNearbyUsers, getMockCenter } from '../utils/mockNearbyUsers';
 import { useAuth } from '../context/AuthContext';
 import { useConnections } from '../context/ConnectionsContext';
 import { apiRequest } from '../api/client';
@@ -70,7 +71,20 @@ const RadarPage = () => {
 
   const subcategories = sharing.filters?.subcategories ?? [];
   const hasActiveFilters = subcategories.length > 0;
-  const nearbyUsers = sharing.nearbyUsers;
+  const realNearbyUsers = sharing.nearbyUsers;
+
+  const nearbyUsers = useMemo((): NearbyShareUser[] => {
+    if (realNearbyUsers.length > 0) return realNearbyUsers;
+    if (shouldUseMockNearbyUsers(realNearbyUsers.length)) {
+      const { lat, lng } = getMockCenter(sharing.currentLocation);
+      const mock = generateMockNearbyUsers(lat, lng);
+      if (mock.length > 0) {
+        console.log('[Discover] Using', mock.length, 'mock nearby users (dev only)');
+      }
+      return mock;
+    }
+    return realNearbyUsers;
+  }, [realNearbyUsers, sharing.currentLocation]);
 
   const allSubcategories = [...new Set(Object.values(SUBCATEGORIES_BY_INDUSTRY).flat())].sort();
 
@@ -277,10 +291,10 @@ const RadarPage = () => {
 
       {/* Find Person radar screen — secondary state */}
       <AnimatePresence>
-        {findingUser && sharing.currentLocation && (
+        {findingUser && (
           <FindPersonRadarScreen
             target={findingUser}
-            myLocation={sharing.currentLocation}
+            myLocation={sharing.currentLocation ?? getMockCenter(null)}
             onBack={() => setFindingUser(null)}
           />
         )}

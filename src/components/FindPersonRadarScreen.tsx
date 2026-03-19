@@ -8,13 +8,17 @@ import { ArrowLeft } from 'lucide-react';
 import { NearbyShareUser } from '../utils/sharing';
 import { DirectionArrow } from './DirectionArrow';
 import { useDeviceHeading } from '../hooks/useDeviceHeading';
-import { bearingDegrees, relativeArrowAngle } from '../utils/geo';
+import { useSharing } from '../hooks/useSharing';
+import { bearingDegrees, relativeArrowAngle, distanceMeters } from '../utils/geo';
 
 export interface FindPersonRadarScreenProps {
   target: NearbyShareUser;
   myLocation: { lat: number; lng: number };
   onBack: () => void;
 }
+
+const FIXED_TARGET_RADIUS = 35;
+const FACE_THRESHOLD_DEG = 18;
 
 function getInitials(name: string) {
   return name
@@ -25,22 +29,28 @@ function getInitials(name: string) {
 }
 
 function formatDistance(meters: number): string {
-  if (meters < 100) return `${Math.round(meters)} m away`;
-  if (meters < 1000) return `${(meters / 100).toFixed(1)} m away`;
-  return `${(meters / 1000).toFixed(1)} km away`;
+  if (meters < 100) return `${Math.round(meters)} m`;
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
 }
 
 export function FindPersonRadarScreen({
   target,
-  myLocation,
+  myLocation: myLocationProp,
   onBack,
 }: FindPersonRadarScreenProps) {
   const { heading, available: compassAvailable, error: compassError } = useDeviceHeading();
+  const sharing = useSharing();
+  const myLocation = sharing.currentLocation ?? myLocationProp;
 
   const hasCoords = target.latitude != null && target.longitude != null;
   const targetLocation = hasCoords
     ? { lat: target.latitude!, lng: target.longitude! }
     : null;
+
+  const liveDistanceMeters = targetLocation
+    ? Math.round(distanceMeters(myLocation.lat, myLocation.lng, targetLocation.lat, targetLocation.lng))
+    : target.distanceMeters;
 
   if (!hasCoords) {
     return (
@@ -77,39 +87,57 @@ export function FindPersonRadarScreen({
   const relativeAngle =
     heading != null ? relativeArrowAngle(heading, targetBearing) : 0;
 
-  const maxRadius = 38;
-  const minRadius = 15;
-  const normalizedDist = Math.min(target.distanceMeters / 152.4, 1);
-  const radius = minRadius + normalizedDist * (maxRadius - minRadius);
+  const isFacing = Math.abs(relativeAngle) < FACE_THRESHOLD_DEG;
+
   const angleRad = (relativeAngle * Math.PI) / 180;
-  const dotLeft = 50 + radius * Math.sin(angleRad);
-  const dotTop = 50 - radius * Math.cos(angleRad);
+  const dotLeft = 50 + FIXED_TARGET_RADIUS * Math.sin(angleRad);
+  const dotTop = 50 - FIXED_TARGET_RADIUS * Math.cos(angleRad);
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div
+      className={`fixed inset-0 z-50 flex flex-col transition-colors duration-300 ${
+        isFacing ? 'bg-emerald-900/95' : 'bg-background'
+      }`}
+    >
       <div
-        className="shrink-0 flex items-center justify-between px-4 pb-3 border-b border-border"
+        className={`shrink-0 flex items-center justify-between px-4 pb-3 border-b transition-colors ${
+          isFacing ? 'border-emerald-600/50' : 'border-border'
+        }`}
         style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
         <button
           type="button"
           onClick={onBack}
-          className="p-2 -m-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 flex items-center gap-2"
+          className={`p-2 -m-2 rounded-lg flex items-center gap-2 ${
+            isFacing ? 'text-emerald-200 hover:text-white hover:bg-emerald-800/50' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+          }`}
         >
           <ArrowLeft size={20} />
           <span className="text-sm font-medium">Back</span>
         </button>
-        <h2 className="text-lg font-semibold text-foreground">Find This Person</h2>
+        <h2 className={`text-lg font-semibold ${isFacing ? 'text-emerald-100' : 'text-foreground'}`}>
+          Find This Person
+        </h2>
         <div className="w-16" />
       </div>
 
+      {isFacing && (
+        <p className="text-center text-xl font-bold text-emerald-100 mt-4 px-4">
+          Walk {formatDistance(liveDistanceMeters)} in this direction
+        </p>
+      )}
+
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-4 py-6">
-        <p className="text-sm font-semibold text-foreground mb-1">
-          {target.fullName || 'Unknown'}
-        </p>
-        <p className="text-xs text-muted-foreground mb-4">
-          {formatDistance(target.distanceMeters)}
-        </p>
+        {!isFacing && (
+          <>
+            <p className="text-sm font-semibold text-foreground mb-1">
+              {target.fullName || 'Unknown'}
+            </p>
+            <p className="text-xs text-muted-foreground mb-4">
+              {formatDistance(liveDistanceMeters)} away
+            </p>
+          </>
+        )}
 
         <div
           className="relative w-full aspect-square mx-auto shrink-0"
@@ -148,15 +176,15 @@ export function FindPersonRadarScreen({
             ))}
           </div>
 
-          {/* Center (you) */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-            <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center glow-ring">
+          {/* Center: You circle (prominent, always visible) */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+            <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center glow-ring border-2 border-primary/80">
               <span className="text-primary-foreground text-sm font-semibold">You</span>
             </div>
           </div>
 
-          {/* Directional arrow at center */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+          {/* Directional arrow below You circle */}
+          <div className="absolute left-1/2 top-[calc(50%+40px)] -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
             {targetLocation && (
               <DirectionArrow
                 myLocation={myLocation}
@@ -195,11 +223,13 @@ export function FindPersonRadarScreen({
           )}
         </div>
 
-        <p className="text-[10px] text-muted-foreground text-center mt-4 max-w-[260px]">
-          {compassAvailable
-            ? 'Point your phone toward the arrow to face this person'
-            : compassError || 'Compass unavailable — turn your phone to orient'}
-        </p>
+        {!isFacing && (
+          <p className="text-[10px] text-muted-foreground text-center mt-4 max-w-[260px]">
+            {compassAvailable
+              ? 'Turn until the arrow points up, then walk straight'
+              : compassError || 'Compass unavailable — turn your phone to orient'}
+          </p>
+        )}
       </div>
     </div>
   );
