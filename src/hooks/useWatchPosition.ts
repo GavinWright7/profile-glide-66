@@ -8,6 +8,12 @@ import { useState, useEffect } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 
+function logError(scope: string, err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error(`[useWatchPosition:${scope}]`, msg, stack ? { stack } : '');
+}
+
 export interface WatchPositionState {
   /** Current location, updated as user moves. null until first fix. */
   location: { lat: number; lng: number } | null;
@@ -32,7 +38,10 @@ export function useWatchPosition(): WatchPositionState {
               error: null,
             });
           },
-          () => setState((s) => ({ ...s, error: 'Location unavailable' }))
+          (err) => {
+            logError('web getCurrentPosition', err);
+            setState((s) => ({ ...s, error: err?.message ?? 'Location unavailable' }));
+          }
         );
         return;
       }
@@ -43,7 +52,10 @@ export function useWatchPosition(): WatchPositionState {
             error: null,
           });
         },
-        () => setState((s) => ({ ...s, error: 'Location unavailable' })),
+        (err) => {
+          logError('web watchPosition', err);
+          setState((s) => ({ ...s, error: err?.message ?? 'Location unavailable' }));
+        },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
       return () => navigator.geolocation?.clearWatch(watchId);
@@ -63,6 +75,7 @@ export function useWatchPosition(): WatchPositionState {
           (pos, err) => {
             if (!mounted) return;
             if (err) {
+              logError('native watchPosition callback', err);
               setState((s) => ({ ...s, error: err?.message ?? 'Location error' }));
               return;
             }
@@ -74,6 +87,7 @@ export function useWatchPosition(): WatchPositionState {
         );
       } catch (err) {
         if (mounted) {
+          logError('native watchPosition start', err);
           setState({
             location: null,
             error: err instanceof Error ? err.message : 'Failed to start location watch',

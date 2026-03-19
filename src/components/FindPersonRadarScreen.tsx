@@ -38,6 +38,12 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
+function safeLog(scope: string, err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error(`[FindPersonRadar:${scope}]`, msg, stack ? { stack } : '');
+}
+
 export function FindPersonRadarScreen({
   target,
   myLocation: myLocationProp,
@@ -45,52 +51,78 @@ export function FindPersonRadarScreen({
 }: FindPersonRadarScreenProps) {
   const { heading, available: compassAvailable, error: compassError } = useDeviceHeading();
   const sharing = useSharing();
-  const { location: watchLocation } = useWatchPosition();
+  const { location: watchLocation, error: watchError } = useWatchPosition();
   const [simulatedLocation, setSimulatedLocation] = useState<{ lat: number; lng: number } | null>(null);
   const simBaseRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Declare hasCoords and targetLocation FIRST — used by shouldSimulate and useEffect
+  const hasCoords = target?.latitude != null && target?.longitude != null;
+  const targetLocation = hasCoords && target
+    ? { lat: target.latitude!, lng: target.longitude! }
+    : null;
 
   // Base location: real GPS when available
   const baseLocation = watchLocation ?? sharing.currentLocation ?? myLocationProp;
 
   // Simulated approach for demo users: when no real movement, simulate walking toward target
-  const isMockTarget = target.userId.startsWith('mock-dev-');
-  const shouldSimulate = import.meta.env.DEV && isMockTarget && !!targetLocation;
+  const isMockTarget = typeof target?.userId === 'string' && target.userId.startsWith('mock-dev-');
+  const shouldSimulate =
+    import.meta.env.DEV && isMockTarget && !!targetLocation && !!baseLocation;
 
   useEffect(() => {
-    if (!shouldSimulate || !targetLocation) return;
-    // Initialize simulation from current base
-    simBaseRef.current = baseLocation;
-    setSimulatedLocation(baseLocation);
-    const id = setInterval(() => {
-      setSimulatedLocation((prev) => {
-        const from = prev ?? simBaseRef.current ?? baseLocation;
-        const next = interpolateToward(
-          from.lat,
-          from.lng,
-          targetLocation.lat,
-          targetLocation.lng,
-          SIMULATE_FRACTION_PER_TICK
-        );
-        const dist = distanceMeters(next.lat, next.lng, targetLocation.lat, targetLocation.lng);
-        if (dist < 3) return from; // Stop when within 3 m
-        return next;
-      });
-    }, SIMULATE_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [shouldSimulate, targetLocation?.lat, targetLocation?.lng, baseLocation.lat, baseLocation.lng]);
+    if (!shouldSimulate || !targetLocation || !baseLocation) return;
+    try {
+      simBaseRef.current = baseLocation;
+      setSimulatedLocation(baseLocation);
+      const id = setInterval(() => {
+        setSimulatedLocation((prev) => {
+          try {
+            const from = prev ?? simBaseRef.current ?? baseLocation;
+            const next = interpolateToward(
+              from.lat,
+              from.lng,
+              targetLocation.lat,
+              targetLocation.lng,
+              SIMULATE_FRACTION_PER_TICK
+            );
+            const dist = distanceMeters(next.lat, next.lng, targetLocation.lat, targetLocation.lng);
+            if (dist < 3) return from;
+            return next;
+          } catch (e) {
+            safeLog('mock interpolation', e);
+            return prev ?? simBaseRef.current ?? baseLocation;
+          }
+        });
+      }, SIMULATE_INTERVAL_MS);
+      return () => clearInterval(id);
+    } catch (e) {
+      safeLog('simulation setup', e);
+      return () => {};
+    }
+  }, [shouldSimulate, targetLocation?.lat, targetLocation?.lng, baseLocation?.lat, baseLocation?.lng]);
 
   // Prefer live watch; when simulating (no real movement), use simulated position for distance
   const myLocation =
-    watchLocation ?? (shouldSimulate && simulatedLocation ? simulatedLocation : null) ?? sharing.currentLocation ?? myLocationProp;
+    watchLocation ??
+    (shouldSimulate && simulatedLocation ? simulatedLocation : null) ??
+    sharing.currentLocation ??
+    myLocationProp ??
+    { lat: 0, lng: 0 };
 
-  const hasCoords = target.latitude != null && target.longitude != null;
-  const targetLocation = hasCoords
-    ? { lat: target.latitude!, lng: target.longitude! }
-    : null;
+  const liveDistanceMeters =
+    targetLocation && myLocation
+      ? Math.round(distanceMeters(myLocation.lat, myLocation.lng, targetLocation.lat, targetLocation.lng))
+      : (target?.distanceMeters ?? 0);
 
-  const liveDistanceMeters = targetLocation
-    ? Math.round(distanceMeters(myLocation.lat, myLocation.lng, targetLocation.lat, targetLocation.lng))
-    : target.distanceMeters;
+  // Guards: missing target or coords — after all hooks
+  if (!target) {
+    return (
+      <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center gap-4">
+        <p className="text-sm text-muted-foreground">No person selected.</p>
+        <button type="button" onClick={onBack} className="text-primary font-medium">Back</button>
+      </div>
+    );
+  }
 
   if (!hasCoords) {
     return (
