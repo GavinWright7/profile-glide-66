@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { NearbyShareUser } from '../utils/sharing';
-import { shouldUseMockNearbyUsers, generateMockNearbyUsers, getMockCenter } from '../utils/mockNearbyUsers';
+import { getMockCenter } from '../utils/mockNearbyUsers';
 import { useAuth } from '../context/AuthContext';
 import { useConnections } from '../context/ConnectionsContext';
 import { apiRequest } from '../api/client';
@@ -73,18 +73,7 @@ const RadarPage = () => {
   const hasActiveFilters = subcategories.length > 0;
   const realNearbyUsers = sharing.nearbyUsers;
 
-  const nearbyUsers = useMemo((): NearbyShareUser[] => {
-    if (realNearbyUsers.length > 0) return realNearbyUsers;
-    if (shouldUseMockNearbyUsers(realNearbyUsers.length)) {
-      const { lat, lng } = getMockCenter(sharing.currentLocation);
-      const mock = generateMockNearbyUsers(lat, lng);
-      if (mock.length > 0) {
-        console.log('[Discover] Using', mock.length, 'mock nearby users (dev only)');
-      }
-      return mock;
-    }
-    return realNearbyUsers;
-  }, [realNearbyUsers, sharing.currentLocation]);
+  const nearbyUsers = useMemo((): NearbyShareUser[] => realNearbyUsers, [realNearbyUsers]);
 
   const allSubcategories = [...new Set(Object.values(SUBCATEGORIES_BY_INDUSTRY).flat())].sort();
 
