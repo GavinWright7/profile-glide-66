@@ -15,7 +15,7 @@ import { NearbyShareUser } from '../utils/sharing';
 import { getMockCenter } from '../utils/mockNearbyUsers';
 import { useAuth } from '../context/AuthContext';
 import { useConnections } from '../context/ConnectionsContext';
-import { apiRequest } from '../api/client';
+import { apiRequest, apiGet } from '../api/client';
 
 /**
  * Convert NearbyShareUser to NearbyUser for ProfileCard.
@@ -61,6 +61,7 @@ const RadarPage = () => {
   const [selectedUser, setSelectedUser] = useState<NearbyUser | null>(null);
   const [actionSheetUser, setActionSheetUser] = useState<NearbyShareUser | null>(null);
   const [findingUser, setFindingUser] = useState<NearbyShareUser | null>(null);
+  const [liveTarget, setLiveTarget] = useState<NearbyShareUser | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<string | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -80,6 +81,44 @@ const RadarPage = () => {
   useEffect(() => {
     sharing.setPremiumRadius(isPremium);
   }, [isPremium, sharing]);
+
+  useEffect(() => {
+    if (!findingUser) {
+      setLiveTarget(null);
+      return;
+    }
+    setLiveTarget(findingUser);
+
+    const id = setInterval(async () => {
+      try {
+        const loc = sharing.currentLocation ?? getMockCenter(null);
+        const res = await apiGet('/sharing/nearby', {
+          latitude: String(loc.lat),
+          longitude: String(loc.lng),
+          sort: sharing.sortBy,
+          radiusMeters: String(sharing.radiusMeters),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { users?: NearbyShareUser[] };
+        const users = data.users ?? [];
+        const fresh = users.find((u) => u.userId === findingUser.userId);
+        if (fresh?.latitude != null && fresh?.longitude != null) {
+          setLiveTarget((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  latitude: fresh.latitude,
+                  longitude: fresh.longitude,
+                  distanceMeters: fresh.distanceMeters ?? prev.distanceMeters,
+                }
+              : prev
+          );
+        }
+      } catch {}
+    }, 500);
+
+    return () => clearInterval(id);
+  }, [findingUser?.userId]);
 
   useEffect(() => {
     if (entitlementLoading || isPremium) {
@@ -282,9 +321,15 @@ const RadarPage = () => {
       <AnimatePresence>
         {findingUser && (
           <FindPersonRadarScreen
-            target={findingUser}
+            target={liveTarget ?? findingUser}
             myLocation={sharing.currentLocation ?? getMockCenter(null)}
             onBack={() => setFindingUser(null)}
+            onFetchTargetLocation={async () => {
+              if (!liveTarget) return null;
+              return liveTarget.latitude != null && liveTarget.longitude != null
+                ? { lat: liveTarget.latitude, lng: liveTarget.longitude }
+                : null;
+            }}
           />
         )}
       </AnimatePresence>

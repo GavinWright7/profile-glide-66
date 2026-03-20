@@ -56,13 +56,14 @@ export function useWatchPosition(): WatchPositionState {
           logError('web watchPosition', err);
           setState((s) => ({ ...s, error: err?.message ?? 'Location unavailable' }));
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 500 }
       );
       return () => navigator.geolocation?.clearWatch(watchId);
     }
 
     let watchId: string | null = null;
     let mounted = true;
+    let heartbeatId: ReturnType<typeof setInterval>;
 
     (async () => {
       try {
@@ -96,8 +97,25 @@ export function useWatchPosition(): WatchPositionState {
       }
     })();
 
+    heartbeatId = setInterval(async () => {
+      if (!mounted) return;
+      try {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 5000,
+        });
+        if (mounted) {
+          setState({
+            location: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+            error: null,
+          });
+        }
+      } catch {}
+    }, 5000);
+
     return () => {
       mounted = false;
+      clearInterval(heartbeatId);
       if (watchId) {
         Geolocation.clearWatch({ id: watchId }).catch(() => {});
       }

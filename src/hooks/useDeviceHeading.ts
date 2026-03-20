@@ -5,8 +5,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import geomagnetism from 'geomagnetism';
 
-const SMOOTHING_FACTOR = 0.15;
+const SMOOTHING_FACTOR = 0.45;
 const SAMPLE_INTERVAL_MS = 100;
 
 export interface DeviceHeadingState {
@@ -33,9 +34,50 @@ export function useDeviceHeading(): DeviceHeadingState {
   });
   const smoothedRef = useRef<number | null>(null);
   const listenerRef = useRef<{ remove: () => Promise<void> } | null>(null);
+  const declinationRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let watchId: string | null = null;
+
+    (async () => {
+      try {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+        const { latitude, longitude } = pos.coords;
+        const model = geomagnetism.model();
+        const info = model.point([latitude, longitude]) as { decl: number };
+        declinationRef.current = info.decl ?? 0;
+
+        watchId = await Geolocation.watchPosition(
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+          (position) => {
+            if (!position) return;
+            try {
+              const m = geomagnetism.model();
+              const i = m.point([position.coords.latitude, position.coords.longitude]) as { decl: number };
+              declinationRef.current = i.decl ?? 0;
+            } catch {}
+          }
+        );
+      } catch {}
+    })();
+
+    return () => {
+      (async () => {
+        if (watchId) {
+          try {
+            const { Geolocation } = await import('@capacitor/geolocation');
+            await Geolocation.clearWatch({ id: watchId });
+          } catch {}
+        }
+      })();
+    };
+  }, []);
 
   const updateHeading = useCallback((raw: number) => {
-    const normalized = ((raw % 360) + 360) % 360;
+    const normalized = ((raw + declinationRef.current) % 360 + 360) % 360;
     const prev = smoothedRef.current;
     const next =
       prev == null ? normalized : smoothHeading(prev, normalized);
@@ -50,6 +92,7 @@ export function useDeviceHeading(): DeviceHeadingState {
     }
 
     let mounted = true;
+    let heartbeatId: ReturnType<typeof setInterval>;
 
     (async () => {
       try {
@@ -82,8 +125,20 @@ export function useDeviceHeading(): DeviceHeadingState {
       }
     })();
 
+    heartbeatId = setInterval(() => {
+      if (!mounted) return;
+      (async () => {
+        try {
+          const { CapgoCompass } = await import('@capgo/capacitor-compass');
+          const { value } = await CapgoCompass.getCurrentHeading();
+          if (mounted) updateHeading(value);
+        } catch {}
+      })();
+    }, 2000);
+
     return () => {
       mounted = false;
+      clearInterval(heartbeatId);
       (async () => {
         try {
           const { CapgoCompass } = await import('@capgo/capacitor-compass');

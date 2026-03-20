@@ -16,13 +16,15 @@ export interface FindPersonRadarScreenProps {
   target: NearbyShareUser;
   myLocation: { lat: number; lng: number };
   onBack: () => void;
+  /** Called every 500ms to get fresh coordinates for the target user. Return null if unavailable. */
+  onFetchTargetLocation?: () => Promise<{ lat: number; lng: number } | null>;
 }
 
 const FIXED_TARGET_RADIUS = 35;
 const FACE_THRESHOLD_DEG = 18;
 /** Simulated approach: move this fraction toward target every tick (demo only). */
 const SIMULATE_FRACTION_PER_TICK = 0.025;
-const SIMULATE_INTERVAL_MS = 2000;
+const SIMULATE_INTERVAL_MS = 500;
 
 function getInitials(name: string) {
   return name
@@ -48,11 +50,15 @@ export function FindPersonRadarScreen({
   target,
   myLocation: myLocationProp,
   onBack,
+  onFetchTargetLocation,
 }: FindPersonRadarScreenProps) {
   const { heading, available: compassAvailable, error: compassError } = useDeviceHeading();
   const sharing = useSharing();
   const { location: watchLocation, error: watchError } = useWatchPosition();
   const [simulatedLocation, setSimulatedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [liveTargetLocation, setLiveTargetLocation] = useState<{ lat: number; lng: number } | null>(
+    target?.latitude != null && target?.longitude != null ? { lat: target.latitude!, lng: target.longitude! } : null
+  );
   const simBaseRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Declare hasCoords and targetLocation FIRST — used by shouldSimulate and useEffect
@@ -69,8 +75,10 @@ export function FindPersonRadarScreen({
   const shouldSimulate =
     import.meta.env.DEV && isMockTarget && !!targetLocation && !!baseLocation;
 
+  const effectiveTargetLocation = liveTargetLocation ?? targetLocation;
+
   useEffect(() => {
-    if (!shouldSimulate || !targetLocation || !baseLocation) return;
+    if (!shouldSimulate || !effectiveTargetLocation || !baseLocation) return;
     try {
       simBaseRef.current = baseLocation;
       setSimulatedLocation(baseLocation);
@@ -81,11 +89,11 @@ export function FindPersonRadarScreen({
             const next = interpolateToward(
               from.lat,
               from.lng,
-              targetLocation.lat,
-              targetLocation.lng,
+              effectiveTargetLocation.lat,
+              effectiveTargetLocation.lng,
               SIMULATE_FRACTION_PER_TICK
             );
-            const dist = distanceMeters(next.lat, next.lng, targetLocation.lat, targetLocation.lng);
+            const dist = distanceMeters(next.lat, next.lng, effectiveTargetLocation.lat, effectiveTargetLocation.lng);
             if (dist < 3) return from;
             return next;
           } catch (e) {
@@ -99,7 +107,18 @@ export function FindPersonRadarScreen({
       safeLog('simulation setup', e);
       return () => {};
     }
-  }, [shouldSimulate, targetLocation?.lat, targetLocation?.lng, baseLocation?.lat, baseLocation?.lng]);
+  }, [shouldSimulate, effectiveTargetLocation?.lat, effectiveTargetLocation?.lng, baseLocation?.lat, baseLocation?.lng]);
+
+  useEffect(() => {
+    if (!onFetchTargetLocation) return;
+    const id = setInterval(async () => {
+      try {
+        const fresh = await onFetchTargetLocation();
+        if (fresh) setLiveTargetLocation(fresh);
+      } catch {}
+    }, 500);
+    return () => clearInterval(id);
+  }, [onFetchTargetLocation]);
 
   // Prefer live watch; when simulating (no real movement), use simulated position for distance
   const myLocation =
@@ -110,8 +129,8 @@ export function FindPersonRadarScreen({
     { lat: 0, lng: 0 };
 
   const liveDistanceMeters =
-    targetLocation && myLocation
-      ? Math.round(distanceMeters(myLocation.lat, myLocation.lng, targetLocation.lat, targetLocation.lng))
+    (liveTargetLocation ?? targetLocation) && myLocation
+      ? Math.round(distanceMeters(myLocation.lat, myLocation.lng, (liveTargetLocation ?? targetLocation)!.lat, (liveTargetLocation ?? targetLocation)!.lng))
       : (target?.distanceMeters ?? 0);
 
   // Guards: missing target or coords — after all hooks
@@ -152,8 +171,8 @@ export function FindPersonRadarScreen({
     );
   }
 
-  const targetBearing = targetLocation
-    ? bearingDegrees(myLocation.lat, myLocation.lng, targetLocation.lat, targetLocation.lng)
+  const targetBearing = (liveTargetLocation ?? targetLocation)
+    ? bearingDegrees(myLocation.lat, myLocation.lng, (liveTargetLocation ?? targetLocation)!.lat, (liveTargetLocation ?? targetLocation)!.lng)
     : 0;
 
   const relativeAngle =
@@ -213,7 +232,7 @@ export function FindPersonRadarScreen({
 
         <div
           className="relative w-full aspect-square mx-auto shrink-0"
-          style={{ maxWidth: 'var(--radar-max)', width: '100%' }}
+          style={{ maxWidth: 'var(--radar-max)', width: '100%', aspectRatio: '1 / 1' }}
         >
           {/* Radar rings */}
           {[1, 2, 3].map((ring) => (
