@@ -39,7 +39,7 @@ module.exports = {
 
   REDIS_GEO_KEY: 'pg:active:geo',
   REDIS_SESSION_PREFIX: 'pg:session:',
-  REDIS_SESSION_TTL: 60,
+  REDIS_SESSION_TTL: 120,
 
   requireEnv,
 };

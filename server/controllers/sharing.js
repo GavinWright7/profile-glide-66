@@ -18,6 +18,9 @@ const premiumService = require('../services/premiumService');
 const MAX_DISTANCE_METERS = config.MAX_DISTANCE_METERS;
 const MAX_DISTANCE_METERS_PREMIUM = config.MAX_DISTANCE_METERS_PREMIUM || 609.6;
 
+/** In-memory store of exact coordinates per userId. Populated by heartbeat and startSharing. */
+const exactCoords = new Map();
+
 function parseCoord(val) {
   const n = parseFloat(val);
   return isNaN(n) ? null : n;
@@ -41,6 +44,7 @@ async function startSharing(req, res) {
 
   try {
     await redis.redisGeoAdd(userId, lat, lon);
+    exactCoords.set(userId, { latitude: lat, longitude: lon });
     const dbUserId = await interestService.resolveUserId(userId);
     if (dbUserId) {
       const loc = await locationService.findOrCreateLocation({ latitude: lat, longitude: lon });
@@ -74,6 +78,7 @@ async function heartbeat(req, res) {
 
   try {
     await redis.redisGeoAdd(userId, lat, lon);
+    exactCoords.set(userId, { latitude: lat, longitude: lon });
     await redis.redisRefreshTtl(userId);
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
@@ -91,6 +96,7 @@ async function stopSharing(req, res) {
 
   try {
     await redis.redisGeoRemove(userId);
+    exactCoords.delete(userId);
     console.log(`[sharing] stop   userId=${userId}`);
     res.json({ success: true });
   } catch (err) {
@@ -205,7 +211,11 @@ async function getNearby(req, res) {
           interests: interests,
           relevanceScore,
         };
-        if (latLng) {
+        const precise = exactCoords.get(id);
+        if (precise) {
+          u.latitude = precise.latitude;
+          u.longitude = precise.longitude;
+        } else if (latLng) {
           u.latitude = latLng.latitude;
           u.longitude = latLng.longitude;
         }

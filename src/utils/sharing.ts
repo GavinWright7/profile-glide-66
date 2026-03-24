@@ -132,6 +132,7 @@ let _lastHeartbeatTime    = 0;                         // ms since epoch of last
 let _isStarting           = false;
 let _lifecycleInitialized = false;
 let _autoResumeAttempted  = false;
+let _findPersonActive = false;
 
 // ── App lifecycle listener ───────────────────────────────────────────────────
 
@@ -299,6 +300,10 @@ export function clearRequiresPremiumPaywall() {
   setState({ requiresPremiumPaywall: false });
 }
 
+export function setFindPersonActive(active: boolean) {
+  _findPersonActive = active;
+}
+
 // ── Heartbeat + Poll ─────────────────────────────────────────────────────────
 
 async function doHeartbeat() {
@@ -324,6 +329,7 @@ async function doHeartbeat() {
 }
 
 async function doNearbyPoll() {
+  if (_findPersonActive) return;
   const loc = _location;
   if (!loc) return;
   const params: Record<string, string> = {

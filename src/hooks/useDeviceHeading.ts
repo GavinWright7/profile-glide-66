@@ -39,8 +39,6 @@ export function useDeviceHeading(): DeviceHeadingState {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    let watchId: string | null = null;
-
     (async () => {
       try {
         const { Geolocation } = await import('@capacitor/geolocation');
@@ -49,31 +47,8 @@ export function useDeviceHeading(): DeviceHeadingState {
         const model = geomagnetism.model();
         const info = model.point([latitude, longitude]) as { decl: number };
         declinationRef.current = info.decl ?? 0;
-
-        watchId = await Geolocation.watchPosition(
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-          (position) => {
-            if (!position) return;
-            try {
-              const m = geomagnetism.model();
-              const i = m.point([position.coords.latitude, position.coords.longitude]) as { decl: number };
-              declinationRef.current = i.decl ?? 0;
-            } catch {}
-          }
-        );
       } catch {}
     })();
-
-    return () => {
-      (async () => {
-        if (watchId) {
-          try {
-            const { Geolocation } = await import('@capacitor/geolocation');
-            await Geolocation.clearWatch({ id: watchId });
-          } catch {}
-        }
-      })();
-    };
   }, []);
 
   const updateHeading = useCallback((raw: number) => {

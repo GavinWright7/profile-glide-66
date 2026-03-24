@@ -11,7 +11,7 @@ import { NearbyUser } from '@/data/mockUsers';
 import { toast } from 'sonner';
 import { useSharing } from '../hooks/useSharing';
 import { useEntitlement } from '../hooks/useEntitlement';
-import { NearbyShareUser } from '../utils/sharing';
+import { NearbyShareUser, setFindPersonActive } from '../utils/sharing';
 import { getMockCenter } from '../utils/mockNearbyUsers';
 import { useAuth } from '../context/AuthContext';
 import { useConnections } from '../context/ConnectionsContext';
@@ -168,6 +168,7 @@ const RadarPage = () => {
   };
 
   const handleFindThisPerson = (user: NearbyShareUser) => {
+    setFindPersonActive(true);
     setFindingUser(user);
     setActionSheetUser(null);
   };
@@ -323,7 +324,7 @@ const RadarPage = () => {
           <FindPersonRadarScreen
             target={liveTarget ?? findingUser}
             myLocation={sharing.currentLocation ?? getMockCenter(null)}
-            onBack={() => setFindingUser(null)}
+            onBack={() => { setFindPersonActive(false); setFindingUser(null); }}
             onFetchTargetLocation={async () => {
               if (!liveTarget) return null;
               return liveTarget.latitude != null && liveTarget.longitude != null
