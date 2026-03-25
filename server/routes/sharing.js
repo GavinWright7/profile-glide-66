@@ -1,23 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { sharingRateLimiter } = require('../middleware/rateLimit');
+const { presenceRateLimiter, nearbyRateLimiter } = require('../middleware/rateLimit');
 const {
   startSharing,
   heartbeat,
+  keepalive,
   stopSharing,
   getNearby,
   debugSessions,
 } = require('../controllers/sharing');
 
-// Rate limit presence endpoints
-router.use(sharingRateLimiter);
-
 // All sharing routes require a valid JWT
-router.post('/start', requireAuth, startSharing);
-router.post('/heartbeat', requireAuth, heartbeat);
-router.post('/stop', requireAuth, stopSharing);
-router.get('/nearby', requireAuth, getNearby);
+router.post('/start', requireAuth, presenceRateLimiter, startSharing);
+router.post('/heartbeat', requireAuth, presenceRateLimiter, heartbeat);
+router.post('/heartbeat/keepalive', requireAuth, presenceRateLimiter, keepalive);
+router.post('/stop', requireAuth, presenceRateLimiter, stopSharing);
+router.get('/nearby', requireAuth, nearbyRateLimiter, getNearby);
 
 // Dev-only — shows in-memory session state (remove before production)
 router.get('/debug', debugSessions);

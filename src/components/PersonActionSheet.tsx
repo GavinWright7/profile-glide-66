@@ -51,14 +51,11 @@ export function PersonActionSheet({
           <div className="flex flex-col gap-1 px-4">
             <button
               type="button"
-              onClick={() => {
-                onFindThisPerson();
-                onClose();
-              }}
-              className="w-full flex items-center justify-center gap-3 py-4 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 active:bg-primary/80 transition-colors touch-manipulation"
+              disabled
+              className="w-full flex items-center justify-center gap-3 py-4 rounded-xl bg-muted text-muted-foreground font-semibold opacity-60 cursor-not-allowed"
             >
               <Compass size={20} />
-              Find {user.fullName?.split(' ')[0] || 'This Person'}
+              Find {user.fullName?.split(' ')[0] || 'This Person'} (Coming Soon)
             </button>
             <button
               type="button"

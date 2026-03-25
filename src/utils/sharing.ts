@@ -30,7 +30,7 @@ import { apiPost, apiGet } from '../api/client';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const HEARTBEAT_FG_MS   = 10_000;   // foreground: heartbeat every 10 s
+const HEARTBEAT_FG_MS   = 3_000;    // foreground: heartbeat every 3 s
 const HEARTBEAT_BG_MS   = 15_000;   // background: heartbeat every 15 s (via watchPosition)
 const POLL_FG_MS        = 5_000;    // foreground: nearby poll every 5 s
 const MAX_LOGS          = 50;
@@ -87,6 +87,18 @@ function loadBgPref(): boolean {
   try { return localStorage.getItem(SK_BG) !== 'false'; } catch { return true; }
 }
 
+function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const lat1 = toRad(a.lat);
+  const lon1 = toRad(a.lng);
+  const lat2 = toRad(b.lat);
+  const lon2 = toRad(b.lng);
+  const dLat = lat2 - lat1;
+  const dLng = lon2 - lon1;
+  const hav = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
+}
+
 /** TESTING: US-wide discovery; revert to 152.4 / 609.6 for production. */
 const FREE_RADIUS = 20_000_000;
 const PREMIUM_RADIUS = 20_000_000;
@@ -129,7 +141,9 @@ let _location:            { lat: number; lng: number } | null = null;
 let _heartbeatTimer:      ReturnType<typeof setInterval> | null = null;
 let _pollTimer:           ReturnType<typeof setInterval> | null = null;
 let _watchId:             string | null = null;        // watchPosition ID (background)
+let _fgWatchId:          string | null = null;        // foreground GPS watch — keeps _location live
 let _lastHeartbeatTime    = 0;                         // ms since epoch of last heartbeat
+let _lastSentLocation:    { lat: number; lng: number } | null = null;
 let _isStarting           = false;
 let _lifecycleInitialized = false;
 let _autoResumeAttempted  = false;
@@ -178,6 +192,7 @@ function initLifecycleListener() {
 // ── Foreground intervals ─────────────────────────────────────────────────────
 
 function startForegroundIntervals() {
+  if (Capacitor.isNativePlatform()) void startForegroundWatch();
   clearForegroundIntervals();
   _heartbeatTimer = setInterval(() => { void doHeartbeat(); }, HEARTBEAT_FG_MS);
   _pollTimer      = setInterval(() => { void doNearbyPoll(); }, POLL_FG_MS);
@@ -188,6 +203,7 @@ function startForegroundIntervals() {
 function clearForegroundIntervals() {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
   if (_pollTimer)      { clearInterval(_pollTimer);      _pollTimer      = null; }
+  stopForegroundWatch();
 }
 
 // ── Background watchPosition ─────────────────────────────────────────────────
@@ -229,6 +245,31 @@ function stopBackgroundWatch() {
     Geolocation.clearWatch({ id: _watchId }).catch(() => {});
     addLog(`background: watchPosition stopped id=${_watchId}`);
     _watchId = null;
+  }
+}
+
+async function startForegroundWatch() {
+  if (_fgWatchId !== null) return;
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    _fgWatchId = await Geolocation.watchPosition(
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      (pos, err) => {
+        if (err || !pos) return;
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        _location = loc;
+        setState({ currentLocation: loc });
+      }
+    );
+  } catch (err) {
+    addLog(`fgWatch error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function stopForegroundWatch() {
+  if (_fgWatchId !== null) {
+    Geolocation.clearWatch({ id: _fgWatchId }).catch(() => {});
+    _fgWatchId = null;
   }
 }
 
@@ -308,21 +349,30 @@ export function setFindPersonActive(active: boolean) {
 // ── Heartbeat + Poll ─────────────────────────────────────────────────────────
 
 async function doHeartbeat() {
-  // Use cached location if available; fetch fresh if not
-  if (!_location) {
-    const loc = await getPosition();
-    if (!loc) { addLog('heartbeat: no location — skipping'); return; }
-  }
+  const loc = await getPosition(true);
+  if (!loc) { addLog('heartbeat: no location — skipping'); return; }
+  const isStationary = _lastSentLocation ? metersBetween(_lastSentLocation, loc) < 2 : false;
   try {
-    const res = await apiPost('/sharing/heartbeat', {
-      latitude:  _location!.lat,
-      longitude: _location!.lng,
-    });
-    if (res.ok) {
-      _lastHeartbeatTime = Date.now();
-      setState({ lastHeartbeatAt: new Date() });
+    if (isStationary) {
+      const res = await apiPost('/sharing/heartbeat/keepalive', {});
+      if (res.ok) {
+        _lastHeartbeatTime = Date.now();
+        setState({ lastHeartbeatAt: new Date() });
+      } else {
+        addLog(`heartbeat: server ${res.status}`);
+      }
     } else {
-      addLog(`heartbeat: server ${res.status}`);
+      const res = await apiPost('/sharing/heartbeat', {
+        latitude:  loc.lat,
+        longitude: loc.lng,
+      });
+      if (res.ok) {
+        _lastSentLocation = loc;
+        _lastHeartbeatTime = Date.now();
+        setState({ lastHeartbeatAt: new Date() });
+      } else {
+        addLog(`heartbeat: server ${res.status}`);
+      }
     }
   } catch (err) {
     addLog(`heartbeat error: ${err instanceof Error ? err.message : String(err)}`);
@@ -566,6 +616,7 @@ export async function stopSharing(): Promise<void> {
   _isStarting = false;
   clearForegroundIntervals();
   stopBackgroundWatch();
+  stopForegroundWatch();
   clearSharingPersistence();
   setState({
     isSharing:      false,
@@ -579,5 +630,6 @@ export async function stopSharing(): Promise<void> {
     addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
   });
   _location = null;
+  _lastSentLocation = null;
   addLog('stopSharing: done');
 }

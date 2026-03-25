@@ -59,6 +59,8 @@ export function FindPersonRadarScreen({
   const [liveTargetLocation, setLiveTargetLocation] = useState<{ lat: number; lng: number } | null>(
     target?.latitude != null && target?.longitude != null ? { lat: target.latitude!, lng: target.longitude! } : null
   );
+  const [localDistance, setLocalDistance] = useState<number | null>(null);
+  const [localBearing, setLocalBearing] = useState<number>(0);
   const simBaseRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Declare hasCoords and targetLocation FIRST — used by shouldSimulate and useEffect
@@ -120,6 +122,23 @@ export function FindPersonRadarScreen({
     return () => clearInterval(id);
   }, [onFetchTargetLocation]);
 
+  // Local recalculation at 100ms — no server round-trip, uses freshest available coords
+  useEffect(() => {
+    const id = setInterval(() => {
+      const myLoc =
+        watchLocation ??
+        sharing.currentLocation ??
+        myLocationProp;
+      const tgtLoc = liveTargetLocation ?? targetLocation;
+      if (!myLoc || !tgtLoc) return;
+      const dist = distanceMeters(myLoc.lat, myLoc.lng, tgtLoc.lat, tgtLoc.lng);
+      const bear = bearingDegrees(myLoc.lat, myLoc.lng, tgtLoc.lat, tgtLoc.lng);
+      setLocalDistance(Math.round(dist));
+      setLocalBearing(bear);
+    }, 100);
+    return () => clearInterval(id);
+  }, [watchLocation, sharing.currentLocation, myLocationProp, liveTargetLocation, targetLocation]);
+
   // Prefer live watch; when simulating (no real movement), use simulated position for distance
   const myLocation =
     watchLocation ??
@@ -128,10 +147,7 @@ export function FindPersonRadarScreen({
     myLocationProp ??
     { lat: 0, lng: 0 };
 
-  const liveDistanceMeters =
-    (liveTargetLocation ?? targetLocation) && myLocation
-      ? Math.round(distanceMeters(myLocation.lat, myLocation.lng, (liveTargetLocation ?? targetLocation)!.lat, (liveTargetLocation ?? targetLocation)!.lng))
-      : (target?.distanceMeters ?? 0);
+  const liveDistanceMeters = localDistance ?? target?.distanceMeters ?? 0;
 
   // Guards: missing target or coords — after all hooks
   if (!target) {
@@ -171,9 +187,7 @@ export function FindPersonRadarScreen({
     );
   }
 
-  const targetBearing = (liveTargetLocation ?? targetLocation)
-    ? bearingDegrees(myLocation.lat, myLocation.lng, (liveTargetLocation ?? targetLocation)!.lat, (liveTargetLocation ?? targetLocation)!.lng)
-    : 0;
+  const targetBearing = localBearing;
 
   const relativeAngle =
     heading != null ? relativeArrowAngle(heading, targetBearing) : 0;

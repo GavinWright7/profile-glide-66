@@ -16,6 +16,7 @@ const premiumRoutes = require('./routes/premium');
 const socialModeRoutes = require('./routes/socialMode');
 
 const app = express();
+app.set('trust proxy', 1);
 
 const PORT = Number(process.env.PORT) || 3001;
 console.log(`[startup] PORT=${PORT} (process.env.PORT=${process.env.PORT || 'not set'})`);

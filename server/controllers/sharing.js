@@ -10,16 +10,33 @@
 const config = require('../config');
 const redis = require('../services/redis');
 const userService = require('../services/userService');
-const interactionService = require('../services/interactionService');
 const locationService = require('../services/locationService');
 const interestService = require('../services/interestService');
 const premiumService = require('../services/premiumService');
 
 const MAX_DISTANCE_METERS = config.MAX_DISTANCE_METERS;
 const MAX_DISTANCE_METERS_PREMIUM = config.MAX_DISTANCE_METERS_PREMIUM || 609.6;
+const PROFILE_CACHE_TTL = 300;
+const EMPTY_PROFILE_CACHE_TTL = 60;
 
 /** In-memory store of exact coordinates per userId. Populated by heartbeat and startSharing. */
 const exactCoords = new Map();
+
+async function cacheUserProfile(r, userId, profile, ttl = PROFILE_CACHE_TTL) {
+  try {
+    await r.setex(`pg:profile:${userId}`, ttl, JSON.stringify(profile));
+  } catch {}
+}
+
+async function getCachedProfile(r, userId) {
+  try {
+    const raw = await r.get(`pg:profile:${userId}`);
+    if (raw != null) return JSON.parse(raw);
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 function parseCoord(val) {
   const n = parseFloat(val);
@@ -45,15 +62,39 @@ async function startSharing(req, res) {
   try {
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
-    const dbUserId = await interestService.resolveUserId(userId);
-    if (dbUserId) {
-      const loc = await locationService.findOrCreateLocation({ latitude: lat, longitude: lon });
-      await locationService.recordVisit(dbUserId, loc.id, { wasDiscoverable: true });
-    }
+    try {
+      const [profile, isPremium] = await Promise.all([
+        userService.getProfileByLinkedInId(userId).catch(() => null),
+        premiumService.hasPremiumAccess(userId).catch(() => false),
+      ]);
+      const r = redis.getRedis();
+      if (profile) {
+        await cacheUserProfile(r, userId, {
+          fullName: profile.full_name,
+          headline: profile.headline,
+          photoUrl: profile.photo_url,
+          linkedinUrl: profile.linkedin_url,
+          interests: profile.interests || [],
+          userUuid: profile.user_uuid || null,
+          isPremium,
+        });
+      }
+    } catch {}
     console.log(
       `[sharing] start  userId=${userId} lat=${lat.toFixed(5)} lon=${lon.toFixed(5)}`
     );
     res.json({ success: true });
+    (async () => {
+      try {
+        const dbUserId = await interestService.resolveUserId(userId);
+        if (dbUserId) {
+          const loc = await locationService.findOrCreateLocation({ latitude: lat, longitude: lon });
+          await locationService.recordVisit(dbUserId, loc.id, { wasDiscoverable: true });
+        }
+      } catch (err) {
+        console.warn('[sharing] start async persistence error:', err.message);
+      }
+    })();
   } catch (err) {
     console.error('[sharing] start error:', err.message);
     res.status(500).json({ error: 'Failed to start sharing' });
@@ -84,6 +125,17 @@ async function heartbeat(req, res) {
   } catch (err) {
     console.error('[sharing] heartbeat error:', err.message);
     res.status(500).json({ error: 'Failed to update heartbeat' });
+  }
+}
+
+async function keepalive(req, res) {
+  const userId = req.userId;
+  try {
+    await redis.redisRefreshTtl(userId);
+    res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[sharing] keepalive error:', err.message);
+    res.status(500).json({ error: 'Failed to refresh session' });
   }
 }
 
@@ -138,7 +190,9 @@ async function getNearby(req, res) {
   const userId = req.userId;
 
   try {
-    const isPremium = await premiumService.hasPremiumAccess(userId);
+    const r = redis.getRedis();
+    const cachedRequesterProfile = await getCachedProfile(r, userId);
+    const isPremium = cachedRequesterProfile?.isPremium ?? await premiumService.hasPremiumAccess(userId).catch(() => false);
 
     const maxRadius = isPremium ? MAX_DISTANCE_METERS_PREMIUM : MAX_DISTANCE_METERS;
     let radiusMeters = Number.isFinite(radiusParam) ? radiusParam : maxRadius;
@@ -171,26 +225,70 @@ async function getNearby(req, res) {
         })
       : [];
 
-    const r = redis.getRedis();
-    const entries = [];
-    for (const [id, dist, latLng] of allEntries) {
-      if (!id || id === userId) continue;
-      const hasSession = await r.exists(`${config.REDIS_SESSION_PREFIX}${id}`);
-      if (hasSession) entries.push([id, dist, latLng]);
-    }
+    const candidates = allEntries.filter(([id]) => id && id !== userId);
+    const sessionKeys = candidates.map(([id]) => `${config.REDIS_SESSION_PREFIX}${id}`);
+    const sessionVals = sessionKeys.length > 0 ? await r.mget(...sessionKeys) : [];
+    const entries = candidates.filter((_, idx) => sessionVals[idx] != null);
 
     const nearbyUserIds = entries.map(([id]) => id);
     if (nearbyUserIds.length === 0) {
       return res.json({ users: [], count: 0 });
     }
 
-    const profiles = await userService.getProfilesByUserIds(nearbyUserIds);
-    const profileByUserId = Object.fromEntries(
-      profiles.map((p) => [p.linkedin_subject_id, p])
+    const cachedProfiles = await Promise.all(nearbyUserIds.map((id) => getCachedProfile(r, id)));
+    const missedIds = nearbyUserIds.filter((id, idx) => cachedProfiles[idx] == null);
+    const missedProfiles = missedIds.length > 0
+      ? await userService.getProfilesByUserIds(missedIds).catch(() => [])
+      : [];
+    const fallbackByUserId = Object.fromEntries(
+      missedProfiles.map((p) => [p.linkedin_subject_id, p])
     );
-
-    const myProfile = await userService.getProfileByLinkedInId(userId);
-    const myInterests = myProfile?.interests || [];
+    const missingIdsWithoutProfiles = missedIds.filter((id) => !fallbackByUserId[id]);
+    if (missingIdsWithoutProfiles.length > 0) {
+      const emptyProfile = {
+        fullName: '',
+        headline: '',
+        photoUrl: '',
+        linkedinUrl: '',
+        interests: [],
+        userUuid: null,
+        isPremium: false,
+      };
+      await Promise.all(
+        missingIdsWithoutProfiles.map((id) =>
+          cacheUserProfile(r, id, emptyProfile, EMPTY_PROFILE_CACHE_TTL)
+        )
+      );
+    }
+    const profileByUserId = Object.fromEntries(
+      nearbyUserIds.map((id, idx) => {
+        const cached = cachedProfiles[idx];
+        if (cached) return [id, cached];
+        const fallback = fallbackByUserId[id];
+        if (!fallback) {
+          return [
+            id,
+            {
+              fullName: '',
+              headline: '',
+              photoUrl: '',
+              linkedinUrl: '',
+              interests: [],
+              userUuid: null,
+            },
+          ];
+        }
+        return [id, {
+          fullName: fallback.full_name,
+          headline: fallback.headline,
+          photoUrl: fallback.photo_url,
+          linkedinUrl: fallback.linkedin_url,
+          interests: fallback.interests || [],
+          userUuid: fallback.user_uuid || null,
+        }];
+      })
+    );
+    const myInterests = cachedRequesterProfile?.interests || [];
 
     let users = entries
       .filter(([id]) => id !== userId)
@@ -202,11 +300,11 @@ async function getNearby(req, res) {
         const jobTitle = headline.split(' at ')[0]?.trim() || '';
         const u = {
           userId: id,
-          fullName: profile?.full_name || '',
+          fullName: profile?.fullName || profile?.full_name || '',
           headline,
           jobTitle,
-          photoUrl: profile?.photo_url || '',
-          linkedinUrl: profile?.linkedin_url || '',
+          photoUrl: profile?.photoUrl || profile?.photo_url || '',
+          linkedinUrl: profile?.linkedinUrl || profile?.linkedin_url || '',
           distanceMeters: Math.round(dist),
           interests: interests,
           relevanceScore,
@@ -247,20 +345,6 @@ async function getNearby(req, res) {
       users.sort((a, b) => a.distanceMeters - b.distanceMeters);
     }
 
-    const actorUserId = await interestService.resolveUserId(userId);
-    if (actorUserId) {
-      for (const u of users) {
-        const targetProfile = profileByUserId[u.userId];
-        const targetUserId = targetProfile?.user_uuid;
-        if (targetUserId) {
-          interactionService.recordInteraction(actorUserId, targetUserId, 'nearby_seen', {
-            latitude: lat,
-            longitude: lon,
-          }).catch(() => {});
-        }
-      }
-    }
-
     res.json({ users, count: users.length });
   } catch (err) {
     console.error('[sharing] nearby error:', err.message);
@@ -281,4 +365,4 @@ async function debugSessions(req, res) {
   }
 }
 
-module.exports = { startSharing, heartbeat, stopSharing, getNearby, debugSessions };
+module.exports = { startSharing, heartbeat, keepalive, stopSharing, getNearby, debugSessions };
