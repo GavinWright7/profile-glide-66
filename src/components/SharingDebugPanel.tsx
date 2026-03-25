@@ -71,7 +71,7 @@ const SharingDebugPanel = () => {
             ))}
             {s.nearbyUsers.length === 0 && s.isSharing && (
               <p className="text-white/30 text-[9px]">
-                Users disappear when: sharing off / heartbeat expired / out of 500 ft range
+                Users disappear when: sharing off / heartbeat expired / out of discovery range
               </p>
             )}
           </div>

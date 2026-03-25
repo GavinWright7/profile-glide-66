@@ -87,8 +87,9 @@ function loadBgPref(): boolean {
   try { return localStorage.getItem(SK_BG) !== 'false'; } catch { return true; }
 }
 
-const FREE_RADIUS = 152.4;
-const PREMIUM_RADIUS = 609.6;
+/** TESTING: US-wide discovery; revert to 152.4 / 609.6 for production. */
+const FREE_RADIUS = 20_000_000;
+const PREMIUM_RADIUS = 20_000_000;
 
 let state: SharingState = {
   isSharing:                false,

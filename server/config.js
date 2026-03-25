@@ -34,8 +34,9 @@ module.exports = {
   LINKEDIN_REDIRECT_URI: process.env.LINKEDIN_REDIRECT_URI,
 
   HEARTBEAT_TIMEOUT_MS: 45000,
-  MAX_DISTANCE_METERS: 152.4,
-  MAX_DISTANCE_METERS_PREMIUM: 609.6,
+  /** TESTING: ~20,000 km — any two U.S. locations (incl. territories). Revert to 152.4 / 609.6 for production. */
+  MAX_DISTANCE_METERS: 20_000_000,
+  MAX_DISTANCE_METERS_PREMIUM: 20_000_000,
 
   REDIS_GEO_KEY: 'pg:active:geo',
   REDIS_SESSION_PREFIX: 'pg:session:',
