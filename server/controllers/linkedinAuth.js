@@ -7,10 +7,7 @@ const { signToken } = require('../utils/jwt');
 const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
 const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 
-function startLinkedInOAuth(req, res) {
-  const forceLogin = req.query.force_login === '1';
-  const isMobile = req.query.platform === 'mobile';
-
+function buildLinkedInAuthorizationUrl(isMobile) {
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: config.LINKEDIN_CLIENT_ID,
@@ -19,23 +16,36 @@ function startLinkedInOAuth(req, res) {
     state: generateState(),
   });
 
-  // Native / in-app browser: document recommends this for extended login options on mobile.
+  // Native / in-app browser: Microsoft recommends this for extended login options on mobile.
   if (isMobile) {
     params.set('enable_extended_login', 'true');
   }
 
-  // After app sign-out we need a fresh LinkedIn interaction. Do NOT redirect to
-  // https://www.linkedin.com/oauth/v2/logout — it is undocumented and shows a 404.
-  // Use standard OIDC-style hints; LinkedIn may ignore unsupported parameters.
+  return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
+}
+
+function startLinkedInOAuth(req, res) {
+  const forceLogin = req.query.force_login === '1';
+  const isMobile = req.query.platform === 'mobile';
+
+  const linkedInAuthUrl = buildLinkedInAuthorizationUrl(isMobile);
+
   if (forceLogin) {
-    params.set('prompt', 'login');
-    params.set('max_age', '0');
+    // Send people to LinkedIn's real sign-in page first, then continue to OAuth via
+    // session_redirect. LinkedIn does not document prompt=login / oauth/v2/logout
+    // reliably; /uas/login is the standard credential form.
+    const loginUrl = new URL('https://www.linkedin.com/uas/login');
+    loginUrl.searchParams.set('session_redirect', linkedInAuthUrl);
+    loginUrl.searchParams.set('fromSignIn', 'true');
+    console.log('[auth] LinkedIn OAuth via uas/login (force login)', {
+      redirect_uri: config.LINKEDIN_REDIRECT_URI,
+      isMobile,
+    });
+    return res.redirect(loginUrl.toString());
   }
 
-  const linkedInAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
-  console.log('[auth] LinkedIn OAuth start', {
+  console.log('[auth] LinkedIn OAuth direct authorization', {
     redirect_uri: config.LINKEDIN_REDIRECT_URI,
-    forceLogin,
     isMobile,
   });
   res.redirect(linkedInAuthUrl);
