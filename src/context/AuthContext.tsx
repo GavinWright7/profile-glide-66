@@ -17,8 +17,7 @@ import {
   isDemoToken,
   APPLE_TESTER_USER,
   APPLE_TESTER_USER_ID,
-  LINKEDIN_AUTH_URL,
-  LINKEDIN_AUTH_URL_FORCE_LOGIN,
+  buildLinkedInStartUrl,
   LOGGED_OUT_FLAG,
   AUTH_401_EVENT,
   authLog,
@@ -216,10 +215,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loginWithLinkedIn = useCallback(async (forceReauth = false) => {
-    let url = LINKEDIN_AUTH_URL;
+    let url = buildLinkedInStartUrl({ forceReauth: false });
     try {
       if (forceReauth || sessionStorage.getItem(LOGGED_OUT_FLAG) === '1') {
-        url = LINKEDIN_AUTH_URL_FORCE_LOGIN;
+        url = buildLinkedInStartUrl({ forceReauth: true });
         sessionStorage.removeItem(LOGGED_OUT_FLAG);
       }
     } catch {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import type { NearbyUser } from '@/data/mockUsers';
 import { useAuth } from './AuthContext';
+import { apiGet, apiPost, apiRequest } from '@/api/client';
 
 export type ConnectionStatus = 'pending' | 'connected';
 
@@ -14,7 +15,9 @@ export interface ConnectionEntry {
 }
 
 export interface SavedProfile {
+  /** Row id from API or local id for demo */
   id: string;
+  targetUserId: string;
   user: NearbyUser;
   savedAt: Date;
 }
@@ -39,7 +42,7 @@ function loadConnections(isDemo: boolean): ConnectionEntry[] {
   }
 }
 
-function loadSavedProfiles(isDemo: boolean): SavedProfile[] {
+function loadSavedProfilesLocal(isDemo: boolean): SavedProfile[] {
   const key = isDemo ? DEMO_SAVED_KEY : SAVED_KEY;
   try {
     const raw = localStorage.getItem(key);
@@ -47,6 +50,7 @@ function loadSavedProfiles(isDemo: boolean): SavedProfile[] {
     const parsed = JSON.parse(raw);
     return (parsed as SavedProfile[]).map((s) => ({
       ...s,
+      targetUserId: s.targetUserId ?? s.user?.id ?? '',
       savedAt: new Date(s.savedAt),
     }));
   } catch {
@@ -62,7 +66,7 @@ function saveConnections(list: ConnectionEntry[], isDemo: boolean) {
   }
 }
 
-function saveSavedProfiles(list: SavedProfile[], isDemo: boolean) {
+function saveSavedProfilesLocal(list: SavedProfile[], isDemo: boolean) {
   try {
     localStorage.setItem(isDemo ? DEMO_SAVED_KEY : SAVED_KEY, JSON.stringify(list));
   } catch {
@@ -70,26 +74,62 @@ function saveSavedProfiles(list: SavedProfile[], isDemo: boolean) {
   }
 }
 
+function apiProfileToNearbyUser(p: {
+  targetUserId: string;
+  name: string;
+  picture: string;
+  headline: string;
+  linkedinUrl: string;
+  career: string;
+  bio: string;
+}): NearbyUser {
+  const parts = p.headline?.split(' at ') ?? [];
+  return {
+    id: p.targetUserId,
+    name: p.name || 'Unknown',
+    headline: p.headline || '',
+    company: parts[1]?.trim() ?? '',
+    jobTitle: parts[0]?.trim() ?? '',
+    profilePhotoUrl: p.picture || '',
+    linkedinProfileUrl: p.linkedinUrl || '',
+    linkedinId: p.targetUserId,
+    distance: 0,
+    angle: 0,
+    bio: p.bio || '',
+    career: p.career || '',
+  };
+}
+
 interface ConnectionsContextValue {
   connections: ConnectionEntry[];
   savedProfiles: SavedProfile[];
+  savedProfilesLoading: boolean;
+  refreshSavedProfiles: () => Promise<void>;
   addConnection: (user: NearbyUser, status?: ConnectionStatus, lat?: number, lng?: number) => void;
   updateStatus: (id: string, status: ConnectionStatus) => void;
   removeConnection: (id: string) => void;
+  /** Demo/local + optimistic: merge into list */
   addSavedProfile: (user: NearbyUser) => void;
-  removeSavedProfile: (id: string) => void;
+  /** Server-backed save for discovery; returns messages for toasts */
+  saveDiscoveredProfile: (targetUserId: string) => Promise<{ message: string; alreadySaved: boolean }>;
+  removeSavedProfile: (entry: SavedProfile) => Promise<void>;
 }
 
 const ConnectionsContext = createContext<ConnectionsContextValue | null>(null);
 
 export function ConnectionsProvider({ children }: { children: ReactNode }) {
-  const { isDemoUser } = useAuth();
+  const { isDemoUser, token } = useAuth();
   const [connections, setConnections] = useState<ConnectionEntry[]>(() => loadConnections(isDemoUser));
-  const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>(() => loadSavedProfiles(isDemoUser));
+  const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>(() =>
+    isDemoUser ? loadSavedProfilesLocal(true) : []
+  );
+  const [savedProfilesLoading, setSavedProfilesLoading] = useState(false);
 
   useEffect(() => {
     setConnections(loadConnections(isDemoUser));
-    setSavedProfiles(loadSavedProfiles(isDemoUser));
+    if (isDemoUser) {
+      setSavedProfiles(loadSavedProfilesLocal(true));
+    }
   }, [isDemoUser]);
 
   useEffect(() => {
@@ -97,8 +137,56 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
   }, [connections, isDemoUser]);
 
   useEffect(() => {
-    saveSavedProfiles(savedProfiles, isDemoUser);
+    if (isDemoUser) {
+      saveSavedProfilesLocal(savedProfiles, true);
+    }
   }, [savedProfiles, isDemoUser]);
+
+  const refreshSavedProfiles = useCallback(async () => {
+    if (isDemoUser) {
+      setSavedProfiles(loadSavedProfilesLocal(true));
+      return;
+    }
+    if (!token) {
+      setSavedProfiles([]);
+      return;
+    }
+    setSavedProfilesLoading(true);
+    try {
+      const res = await apiGet('/saved-profiles');
+      const data = (await res.json()) as {
+        profiles?: Array<{
+          id: string;
+          targetUserId: string;
+          savedAt: string;
+          name: string;
+          picture: string;
+          headline: string;
+          linkedinUrl: string;
+          career: string;
+          bio: string;
+        }>;
+      };
+      if (!res.ok) return;
+      const list: SavedProfile[] = (data.profiles ?? []).map((p) => ({
+        id: p.id,
+        targetUserId: p.targetUserId,
+        savedAt: new Date(p.savedAt),
+        user: apiProfileToNearbyUser(p),
+      }));
+      setSavedProfiles(list);
+    } catch {
+      /* ignore */
+    } finally {
+      setSavedProfilesLoading(false);
+    }
+  }, [isDemoUser, token]);
+
+  useEffect(() => {
+    if (!isDemoUser && token) {
+      void refreshSavedProfiles();
+    }
+  }, [isDemoUser, token, refreshSavedProfiles]);
 
   const addConnection = useCallback(
     (user: NearbyUser, status: ConnectionStatus = 'pending', lat?: number, lng?: number) => {
@@ -127,24 +215,59 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
   const addSavedProfile = useCallback((user: NearbyUser) => {
     const id = `saved_${Date.now()}_${user.id}`;
     setSavedProfiles((prev) => {
-      if (prev.some((s) => s.user.id === user.id)) return prev;
-      return [...prev, { id, user, savedAt: new Date() }];
+      if (prev.some((s) => s.targetUserId === user.id)) return prev;
+      return [
+        ...prev,
+        { id, targetUserId: user.id, user, savedAt: new Date() },
+      ];
     });
   }, []);
 
-  const removeSavedProfile = useCallback((id: string) => {
-    setSavedProfiles((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+  const saveDiscoveredProfile = useCallback(
+    async (targetUserId: string) => {
+      if (isDemoUser) {
+        return { message: 'Profile saved.', alreadySaved: false };
+      }
+      const res = await apiPost(`/saved-profiles/${encodeURIComponent(targetUserId)}`, {});
+      const data = (await res.json()) as { message?: string; alreadySaved?: boolean; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save');
+      }
+      await refreshSavedProfiles();
+      return {
+        message: data.message || 'Profile saved.',
+        alreadySaved: !!data.alreadySaved,
+      };
+    },
+    [isDemoUser, refreshSavedProfiles]
+  );
+
+  const removeSavedProfile = useCallback(
+    async (entry: SavedProfile) => {
+      if (isDemoUser) {
+        setSavedProfiles((prev) => prev.filter((s) => s.id !== entry.id));
+        return;
+      }
+      await apiRequest(`/saved-profiles/${encodeURIComponent(entry.targetUserId)}`, {
+        method: 'DELETE',
+      });
+      await refreshSavedProfiles();
+    },
+    [isDemoUser, refreshSavedProfiles]
+  );
 
   return (
     <ConnectionsContext.Provider
       value={{
         connections,
         savedProfiles,
+        savedProfilesLoading,
+        refreshSavedProfiles,
         addConnection,
         updateStatus,
         removeConnection,
         addSavedProfile,
+        saveDiscoveredProfile,
         removeSavedProfile,
       }}
     >

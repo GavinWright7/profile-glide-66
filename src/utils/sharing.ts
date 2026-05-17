@@ -51,6 +51,9 @@ export interface NearbyShareUser {
   linkedinUrl:    string;
   distanceMeters: number;
   interests?:     string[];
+  /** Public profile from Neon (nearby API) */
+  bio?: string;
+  career?: string;
   relevanceScore?: number;
   /** Coordinates for directional arrow (from Redis GEO). */
   latitude?:      number;

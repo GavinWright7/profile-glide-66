@@ -105,6 +105,13 @@ async function handleLinkedInCallback(req, res) {
       headline: profile.headline || '',
       linkedinUrl,
       interests,
+      currentJobTitle: storedProfile?.current_job_title || '',
+      currentCompany: storedProfile?.current_company || '',
+      almaMater: storedProfile?.alma_mater || '',
+      pastCompanies: storedProfile?.past_companies || [],
+      goals: storedProfile?.goals || [],
+      bio: storedProfile?.bio || '',
+      career: storedProfile?.career || '',
     };
 
     const sessionToken = signToken({ userId: userPayload.id, user: userPayload });
@@ -169,6 +176,13 @@ async function exchangeCode(req, res) {
       headline: profile.headline || '',
       linkedinUrl,
       interests,
+      currentJobTitle: storedProfile?.current_job_title || '',
+      currentCompany: storedProfile?.current_company || '',
+      almaMater: storedProfile?.alma_mater || '',
+      pastCompanies: storedProfile?.past_companies || [],
+      goals: storedProfile?.goals || [],
+      bio: storedProfile?.bio || '',
+      career: storedProfile?.career || '',
     };
 
     const sessionToken = signToken({ userId: userPayload.id, user: userPayload });
@@ -181,7 +195,7 @@ async function exchangeCode(req, res) {
   }
 }
 
-function verifyToken(req, res) {
+async function verifyToken(req, res) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     console.log('[auth] validate: no token provided');
@@ -191,8 +205,12 @@ function verifyToken(req, res) {
   const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, config.JWT_SECRET);
-    console.log('[auth] validate: success userId=', payload.user?.id);
-    res.json({ valid: true, user: payload.user });
+    const merged = await userService.getMergedUserForAuth(
+      payload.user?.id,
+      payload.user
+    );
+    console.log('[auth] validate: success userId=', merged?.id);
+    res.json({ valid: true, user: merged });
   } catch (err) {
     const reason = err?.name === 'TokenExpiredError' ? 'expired' : 'invalid';
     console.log('[auth] validate: token', reason);

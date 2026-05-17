@@ -70,7 +70,7 @@ async function getProfilesByUserIds(linkedinSubjectIds) {
   if (!linkedinSubjectIds || linkedinSubjectIds.length === 0) return [];
   const placeholders = linkedinSubjectIds.map((_, i) => `$${i + 1}`).join(',');
   const res = await db.query(
-    `SELECT u.linkedin_subject_id, u.id AS user_uuid, p.user_id, p.full_name, p.headline, p.photo_url, p.linkedin_url, p.interests
+    `SELECT u.linkedin_subject_id, u.id AS user_uuid, p.user_id, p.full_name, p.headline, p.photo_url, p.linkedin_url, p.interests, p.bio, p.career
      FROM profiles p
      JOIN users u ON u.id = p.user_id
      WHERE u.linkedin_subject_id IN (${placeholders})`,
@@ -138,6 +138,112 @@ async function updateGoals(linkedinSubjectId, goals) {
   return res.rows[0] || null;
 }
 
+/** Merge JWT user payload with durable Neon profile fields (for /auth/me). */
+function mergeJwtUserWithProfileRow(baseUser, row) {
+  if (!row) return { ...baseUser };
+  return {
+    ...baseUser,
+    name: row.full_name || baseUser.name,
+    headline: row.headline || baseUser.headline,
+    picture: row.photo_url || baseUser.picture,
+    linkedinUrl: row.linkedin_url ?? baseUser.linkedinUrl ?? '',
+    interests: Array.isArray(row.interests) ? row.interests : baseUser.interests ?? [],
+    currentJobTitle: row.current_job_title ?? baseUser.currentJobTitle,
+    currentCompany: row.current_company ?? baseUser.currentCompany,
+    almaMater: row.alma_mater ?? baseUser.almaMater,
+    pastCompanies: Array.isArray(row.past_companies) ? row.past_companies : baseUser.pastCompanies ?? [],
+    goals: Array.isArray(row.goals) ? row.goals : baseUser.goals ?? [],
+    bio: row.bio != null && String(row.bio).trim() !== '' ? String(row.bio) : '',
+    career: row.career != null && String(row.career).trim() !== '' ? String(row.career) : '',
+  };
+}
+
+async function getMergedUserForAuth(linkedinSubjectId, jwtUser) {
+  const row = await getProfileByLinkedInId(linkedinSubjectId);
+  return mergeJwtUserWithProfileRow(jwtUser, row);
+}
+
+const MAX_BIO_LENGTH = 300;
+
+/**
+ * PATCH fields: bio, career, interests (partial). interests uses same rules as PUT /profile/interests.
+ */
+async function updateProfileMePatch(linkedinSubjectId, patch) {
+  const { bio, career, interests } = patch;
+  const fields = [];
+  const vals = [];
+  let n = 1;
+
+  if (bio !== undefined) {
+    const b = String(bio ?? '');
+    if (b.length > MAX_BIO_LENGTH) {
+      const err = new Error('bio_too_long');
+      err.code = 'bio_too_long';
+      throw err;
+    }
+    fields.push(`bio = $${n++}`);
+    vals.push(b || null);
+  }
+  if (career !== undefined) {
+    fields.push(`career = $${n++}`);
+    vals.push(String(career ?? '').trim() || null);
+  }
+  if (interests !== undefined) {
+    fields.push(`interests = $${n++}`);
+    vals.push(Array.isArray(interests) ? interests : []);
+  }
+
+  if (fields.length === 0) return getProfileByLinkedInId(linkedinSubjectId);
+
+  vals.push(linkedinSubjectId);
+  await db.query(
+    `UPDATE profiles p
+     SET ${fields.join(', ')}, updated_at = NOW()
+     FROM users u
+     WHERE u.id = p.user_id AND u.linkedin_subject_id = $${n}`,
+    vals
+  );
+  return getProfileByLinkedInId(linkedinSubjectId);
+}
+
+async function listSavedProfilesForSaver(saverLinkedinSubjectId) {
+  const res = await db.query(
+    `SELECT sp.id, sp.target_linkedin_subject_id, sp.created_at,
+            p.full_name, p.headline, p.photo_url, p.linkedin_url, p.bio, p.career
+     FROM saved_profiles sp
+     JOIN users u ON u.linkedin_subject_id = sp.target_linkedin_subject_id
+     JOIN profiles p ON p.user_id = u.id
+     WHERE sp.saver_linkedin_subject_id = $1
+     ORDER BY sp.created_at DESC`,
+    [saverLinkedinSubjectId]
+  );
+  return res.rows;
+}
+
+async function insertSavedProfile(saverLinkedinSubjectId, targetLinkedinSubjectId) {
+  if (saverLinkedinSubjectId === targetLinkedinSubjectId) {
+    const err = new Error('cannot_save_self');
+    err.code = 'cannot_save_self';
+    throw err;
+  }
+  const res = await db.query(
+    `INSERT INTO saved_profiles (saver_linkedin_subject_id, target_linkedin_subject_id)
+     VALUES ($1, $2)
+     ON CONFLICT (saver_linkedin_subject_id, target_linkedin_subject_id) DO NOTHING
+     RETURNING id, created_at`,
+    [saverLinkedinSubjectId, targetLinkedinSubjectId]
+  );
+  return { row: res.rows[0] || null, inserted: !!res.rows[0] };
+}
+
+async function deleteSavedProfile(saverLinkedinSubjectId, targetLinkedinSubjectId) {
+  await db.query(
+    `DELETE FROM saved_profiles
+     WHERE saver_linkedin_subject_id = $1 AND target_linkedin_subject_id = $2`,
+    [saverLinkedinSubjectId, targetLinkedinSubjectId]
+  );
+}
+
 module.exports = {
   upsertUser,
   upsertProfile,
@@ -147,4 +253,10 @@ module.exports = {
   updateInterests,
   updateProfessionalBackground,
   updateGoals,
+  mergeJwtUserWithProfileRow,
+  getMergedUserForAuth,
+  updateProfileMePatch,
+  listSavedProfilesForSaver,
+  insertSavedProfile,
+  deleteSavedProfile,
 };

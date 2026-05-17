@@ -5,6 +5,8 @@ const { INTEREST_OPTIONS } = require('../constants/interests');
 const { getSubcategoriesForIndustry } = require('../constants/subcategories');
 const interestService = require('../services/interestService');
 
+const MAX_BIO_LEN = 300;
+
 /**
  * PUT /profile/linkedin-url
  * Body: { linkedin_url: string }
@@ -185,6 +187,8 @@ async function getProfile(req, res) {
     const almaMater = stored?.alma_mater ?? user.almaMater ?? null;
     const pastCompanies = stored?.past_companies ?? user.pastCompanies ?? [];
     const goals = stored?.goals ?? user.goals ?? [];
+    const bio = stored?.bio ?? user.bio ?? '';
+    const career = stored?.career ?? user.career ?? '';
     const merged = {
       ...user,
       linkedinUrl,
@@ -194,6 +198,8 @@ async function getProfile(req, res) {
       almaMater,
       pastCompanies,
       goals,
+      bio,
+      career,
     };
     res.json({ user: merged });
   } catch (err) {
@@ -202,4 +208,109 @@ async function getProfile(req, res) {
   }
 }
 
-module.exports = { updateLinkedInUrl, updateInterests, getProfile, getInterestsOptions, updateProfessionalBackground, updateGoals };
+/**
+ * GET /profile/me — same as GET /profile (canonical name).
+ */
+async function getMe(req, res) {
+  const user = req.user;
+  try {
+    const merged = await userService.getMergedUserForAuth(user.id, user);
+    res.json({ user: merged });
+  } catch (err) {
+    console.error('[profile] getMe error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+}
+
+/**
+ * PATCH /profile/me
+ * Body: { bio?, career?, interests? } — partial updates allowed.
+ */
+async function patchMe(req, res) {
+  const user = req.user;
+  const { bio, career, interests } = req.body;
+
+  if (
+    bio === undefined &&
+    career === undefined &&
+    interests === undefined
+  ) {
+    return res.status(400).json({
+      error: 'Provide at least one of: bio, career, interests',
+    });
+  }
+
+  if (bio !== undefined && typeof bio !== 'string') {
+    return res.status(400).json({ error: 'bio must be a string' });
+  }
+  if (bio !== undefined && String(bio).length > MAX_BIO_LEN) {
+    return res.status(400).json({
+      error: `Bio must be ${MAX_BIO_LEN} characters or less`,
+    });
+  }
+
+  try {
+    if (interests !== undefined) {
+      let interestsPayload = interests;
+      if (!Array.isArray(interestsPayload) || interestsPayload.length > 3) {
+        return res.status(400).json({
+          error:
+            'interests must be an array of up to 3 items, each with industry and subcategories',
+        });
+      }
+      if (typeof interestsPayload[0] === 'string') {
+        interestsPayload = interestsPayload.map((industry) => ({
+          industry,
+          subcategories: [],
+        }));
+      }
+      for (const item of interestsPayload) {
+        if (!item || typeof item !== 'object' || !item.industry) {
+          return res
+            .status(400)
+            .json({ error: 'Each interest must have an industry' });
+        }
+        if (!Array.isArray(item.subcategories)) {
+          return res
+            .status(400)
+            .json({ error: 'subcategories must be an array of strings' });
+        }
+      }
+      await interestService.saveUserInterests(user.id, interestsPayload);
+      const flatIndustries = interestsPayload.map((i) => i.industry);
+      await userService.updateInterests(user.id, flatIndustries);
+    }
+
+    if (bio !== undefined || career !== undefined) {
+      try {
+        await userService.updateProfileMePatch(user.id, { bio, career });
+      } catch (err) {
+        if (err.code === 'bio_too_long') {
+          return res.status(400).json({
+            error: `Bio must be ${MAX_BIO_LEN} characters or less`,
+          });
+        }
+        throw err;
+      }
+    }
+
+    const merged = await userService.getMergedUserForAuth(user.id, user);
+    const token = signToken({ userId: user.id, user: merged });
+    console.log('[profile] PATCH /me for', user.id);
+    res.json({ token, user: merged });
+  } catch (err) {
+    console.error('[profile] patchMe error:', err.message);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+}
+
+module.exports = {
+  updateLinkedInUrl,
+  updateInterests,
+  getProfile,
+  getMe,
+  patchMe,
+  getInterestsOptions,
+  updateProfessionalBackground,
+  updateGoals,
+};

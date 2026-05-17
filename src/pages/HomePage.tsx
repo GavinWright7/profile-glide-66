@@ -1,13 +1,11 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wifi, WifiOff, LogOut, Sparkles } from 'lucide-react';
+import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
 
 const HomePage = () => {
-  const navigate = useNavigate();
   const { user, token, isAuthReady, logout } = useAuth();
   const sharing = useSharing();
 
@@ -140,15 +138,6 @@ const HomePage = () => {
                     : 'Broadcasting your profile to people nearby'
                   : 'Tap to broadcast your profile to nearby people'}
               </p>
-
-              <Button
-                variant="outline"
-                className="w-full gap-2 shrink-0"
-                onClick={() => navigate('/social-mode')}
-              >
-                <Sparkles size={18} />
-                Social Mode
-              </Button>
             </div>
           </div>
         </motion.div>

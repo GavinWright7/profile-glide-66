@@ -75,6 +75,8 @@ async function startSharing(req, res) {
           photoUrl: profile.photo_url,
           linkedinUrl: profile.linkedin_url,
           interests: profile.interests || [],
+          bio: profile.bio || '',
+          career: profile.career || '',
           userUuid: profile.user_uuid || null,
           isPremium,
         });
@@ -251,6 +253,8 @@ async function getNearby(req, res) {
         photoUrl: '',
         linkedinUrl: '',
         interests: [],
+        bio: '',
+        career: '',
         userUuid: null,
         isPremium: false,
       };
@@ -274,6 +278,8 @@ async function getNearby(req, res) {
               photoUrl: '',
               linkedinUrl: '',
               interests: [],
+              bio: '',
+              career: '',
               userUuid: null,
             },
           ];
@@ -284,6 +290,8 @@ async function getNearby(req, res) {
           photoUrl: fallback.photo_url,
           linkedinUrl: fallback.linkedin_url,
           interests: fallback.interests || [],
+          bio: fallback.bio || '',
+          career: fallback.career || '',
           userUuid: fallback.user_uuid || null,
         }];
       })
@@ -307,6 +315,8 @@ async function getNearby(req, res) {
           linkedinUrl: profile?.linkedinUrl || profile?.linkedin_url || '',
           distanceMeters: Math.round(dist),
           interests: interests,
+          bio: profile?.bio || '',
+          career: profile?.career || '',
           relevanceScore,
         };
         const precise = exactCoords.get(id);

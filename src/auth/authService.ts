@@ -9,6 +9,8 @@
  * Auth state is determined by validated token + backend /auth/me, not just storage.
  */
 
+import { Capacitor } from '@capacitor/core';
+
 const TOKEN_KEY = 'pg_session_token';
 const USER_KEY = 'pg_user';
 const DEMO_KEY = 'pg_demo_mode';
@@ -28,6 +30,8 @@ export const APPLE_TESTER_USER: AuthUser = {
   headline: 'Apple App Review',
   linkedinUrl: 'https://linkedin.com/in/apple-reviewer',
   interests: ['Technology', 'Software', 'Product Management'],
+  bio: '',
+  career: 'App Reviewer',
   currentJobTitle: 'App Reviewer',
   currentCompany: 'Apple',
   almaMater: 'Apple University',
@@ -50,6 +54,15 @@ if (rawBackendUrl && !rawBackendUrl.includes('YOUR_MAC_LAN_IP')) {
 }
 
 export const BACKEND_URL = rawBackendUrl.replace(/\/$/, '');
+
+/** Native apps must advertise platform=mobile to the backend OAuth start. */
+export function buildLinkedInStartUrl(options: { forceReauth?: boolean } = {}): string {
+  const params = new URLSearchParams();
+  if (options.forceReauth) params.set('force_login', '1');
+  if (Capacitor.isNativePlatform()) params.set('platform', 'mobile');
+  const q = params.toString();
+  return `${BACKEND_URL}/auth/linkedin/start${q ? `?${q}` : ''}`;
+}
 
 export const LINKEDIN_AUTH_URL = `${BACKEND_URL}/auth/linkedin/start`;
 /** Use after logout to force LinkedIn to show login form (no auto-login). */
@@ -79,6 +92,9 @@ export interface AuthUser {
   almaMater?: string;
   pastCompanies?: string[];
   goals?: string[];
+  /** In-app profile (Neon profiles table) */
+  bio?: string;
+  career?: string;
 }
 
 export interface AuthSession {

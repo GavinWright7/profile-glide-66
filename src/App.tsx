@@ -11,8 +11,8 @@ import RadarPage from "./pages/RadarPage";
 import ConnectionsPage from "./pages/ConnectionsPage";
 import HistoryPage from "./pages/HistoryPage";
 import SavedProfilesPage from "./pages/SavedProfilesPage";
+import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
-import SocialModePage from "./pages/SocialModePage";
 import OnboardingInterestsPage from "./pages/OnboardingInterestsPage";
 import OnboardingSubcategoriesPage from "./pages/OnboardingSubcategoriesPage";
 import OnboardingLinkedInPage from "./pages/OnboardingLinkedInPage";
@@ -206,11 +206,13 @@ const App = () => (
               }
             />
             <Route
-              path="/social-mode"
+              path="/profile"
               element={
                 <ProtectedRoute>
                   <OnboardingGuard>
-                    <SocialModePage />
+                    <AnimatedTabPage>
+                      <ProfilePage />
+                    </AnimatedTabPage>
                   </OnboardingGuard>
                 </ProtectedRoute>
               }
@@ -219,9 +221,11 @@ const App = () => (
               path="/settings"
               element={
                 <ProtectedRoute>
-                  <AnimatedTabPage>
-                    <SettingsPage />
-                  </AnimatedTabPage>
+                  <OnboardingGuard>
+                    <AnimatedTabPage>
+                      <SettingsPage />
+                    </AnimatedTabPage>
+                  </OnboardingGuard>
                 </ProtectedRoute>
               }
             />
