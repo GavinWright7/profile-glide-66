@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
 import { apiGet, apiPatch } from '@/api/client';
 import { saveSession } from '@/auth/authService';
-import { CAREERS } from '@/data/careers';
+import { filterBlsOccupations } from '@/utils/filterBlsOccupations';
 import ScrollableSelectionBox from '@/components/ScrollableSelectionBox';
 
 const BIO_MAX = 300;
@@ -29,13 +29,6 @@ const INTEREST_OPTIONS = [
   'Transportation & Logistics',
 ];
 
-function filterCareersByPrefix(query: string): string[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  const list = CAREERS.filter((c) => c.toLowerCase().startsWith(q));
-  return list.slice(0, 48);
-}
-
 export default function ProfilePage() {
   const { token, user, updateSession, isDemoUser } = useAuth();
   const [bio, setBio] = useState('');
@@ -47,10 +40,21 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [blsOccupations, setBlsOccupations] = useState<readonly string[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import('@/data/occupations').then((m) => {
+      if (!cancelled) setBlsOccupations(m.BLS_OCCUPATIONS);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const careerSuggestions = useMemo(
-    () => filterCareersByPrefix(careerSearch),
-    [careerSearch]
+    () => filterBlsOccupations(careerSearch, blsOccupations ?? []),
+    [careerSearch, blsOccupations]
   );
 
   const loadMe = useCallback(async () => {
@@ -168,9 +172,9 @@ export default function ProfilePage() {
                         value={careerSearch}
                         onChange={(e) => setCareerSearch(e.target.value)}
                       />
-                      <div className="max-h-40 overflow-y-auto space-y-1">
+                      <div className="max-h-56 overflow-y-auto space-y-1">
                         {careerSearch.trim() && careerSuggestions.length === 0 && (
-                          <p className="text-xs text-muted-foreground px-1">No matches — use your text below.</p>
+                          <p className="text-xs text-muted-foreground px-1">No matches — save your text below.</p>
                         )}
                         {careerSuggestions.map((c) => (
                           <button
