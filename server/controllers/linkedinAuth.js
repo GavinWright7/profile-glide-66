@@ -8,12 +8,8 @@ const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
 const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 
 function startLinkedInOAuth(req, res) {
-  if (req.query.force_login === '1') {
-    const base = config.LINKEDIN_REDIRECT_URI.replace(/\/auth\/linkedin\/callback\/?(\?.*)?$/i, '');
-    const oauthStartUrl = `${base}/auth/linkedin/start`;
-    const logoutUrl = `https://www.linkedin.com/oauth/v2/logout?redirect_uri=${encodeURIComponent(oauthStartUrl)}`;
-    return res.redirect(logoutUrl);
-  }
+  const forceLogin = req.query.force_login === '1';
+  const isMobile = req.query.platform === 'mobile';
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -23,8 +19,25 @@ function startLinkedInOAuth(req, res) {
     state: generateState(),
   });
 
+  // Native / in-app browser: document recommends this for extended login options on mobile.
+  if (isMobile) {
+    params.set('enable_extended_login', 'true');
+  }
+
+  // After app sign-out we need a fresh LinkedIn interaction. Do NOT redirect to
+  // https://www.linkedin.com/oauth/v2/logout — it is undocumented and shows a 404.
+  // Use standard OIDC-style hints; LinkedIn may ignore unsupported parameters.
+  if (forceLogin) {
+    params.set('prompt', 'login');
+    params.set('max_age', '0');
+  }
+
   const linkedInAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
-  console.log('[auth] LinkedIn OAuth start, redirect_uri=', config.LINKEDIN_REDIRECT_URI);
+  console.log('[auth] LinkedIn OAuth start', {
+    redirect_uri: config.LINKEDIN_REDIRECT_URI,
+    forceLogin,
+    isMobile,
+  });
   res.redirect(linkedInAuthUrl);
 }
 

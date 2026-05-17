@@ -196,6 +196,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       authLog('login success (deep link)');
+      try {
+        sessionStorage.removeItem(LOGGED_OUT_FLAG);
+      } catch {
+        /* ignore */
+      }
       const session: AuthSession = { token: newToken, user: decodedUser };
       saveSession(session);
       setToken(newToken);
@@ -209,21 +214,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginAsAppleTester = useCallback(() => {
     authLog('login: Apple Tester');
+    try {
+      sessionStorage.removeItem(LOGGED_OUT_FLAG);
+    } catch {
+      /* ignore */
+    }
     saveDemoSession();
     setToken('demo-token');
     setUser(APPLE_TESTER_USER);
   }, []);
 
   const loginWithLinkedIn = useCallback(async (forceReauth = false) => {
-    let url = buildLinkedInStartUrl({ forceReauth: false });
+    let force = forceReauth;
     try {
-      if (forceReauth || sessionStorage.getItem(LOGGED_OUT_FLAG) === '1') {
-        url = buildLinkedInStartUrl({ forceReauth: true });
-        sessionStorage.removeItem(LOGGED_OUT_FLAG);
-      }
+      if (sessionStorage.getItem(LOGGED_OUT_FLAG) === '1') force = true;
     } catch {
       /* ignore */
     }
+    const url = buildLinkedInStartUrl({ forceReauth: force });
     authLog('opening LinkedIn auth', url);
     if (Capacitor.isNativePlatform()) {
       await Browser.open({ url });
@@ -234,6 +242,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authLog('logout');
+    try {
+      sessionStorage.setItem(LOGGED_OUT_FLAG, '1');
+    } catch {
+      /* ignore */
+    }
     clearSession();
     setToken(null);
     setUser(null);

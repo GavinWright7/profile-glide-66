@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { BACKEND_URL, saveSession, buildAuthDeepLink } from '../auth/authService';
+import { BACKEND_URL, saveSession, buildAuthDeepLink, LOGGED_OUT_FLAG } from '../auth/authService';
 import { isValidLinkedInUrl } from '../utils/linkedinUrl';
 
 /**
@@ -70,6 +70,11 @@ const LinkedInCallbackPage = () => {
 
         // Persist session so AuthProvider can hydrate it on next mount
         saveSession({ token, user });
+        try {
+          sessionStorage.removeItem(LOGGED_OUT_FLAG);
+        } catch {
+          /* ignore */
+        }
 
         // --- Native (iOS in-app browser) ---
         window.location.href = buildAuthDeepLink({ token });

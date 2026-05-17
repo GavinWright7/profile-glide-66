@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 
-import { LOGGED_OUT_FLAG } from '../auth/authService';
-
 const ENABLE_APPLE_TESTER = import.meta.env.VITE_ENABLE_APPLE_TESTER === 'true';
 const TAP_WINDOW_MS = 600;
 
@@ -16,13 +14,7 @@ const LoginPage = () => {
   const lastTapRef = useRef(0);
 
   const handleLogin = () => {
-    let forceReauth = false;
-    try {
-      forceReauth = sessionStorage.getItem(LOGGED_OUT_FLAG) === '1';
-    } catch {
-      /* ignore */
-    }
-    loginWithLinkedIn(forceReauth);
+    void loginWithLinkedIn();
   };
 
   const handleLogoTap = () => {

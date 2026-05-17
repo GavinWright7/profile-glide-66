@@ -12,7 +12,6 @@ import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
 import { useEntitlement } from '../hooks/useEntitlement';
 
-import { LOGGED_OUT_FLAG } from '../auth/authService';
 
 const SettingsPage = () => {
   const sharing = useSharing();
@@ -81,11 +80,6 @@ const SettingsPage = () => {
   };
 
   const handleSignOut = () => {
-    try {
-      sessionStorage.setItem(LOGGED_OUT_FLAG, '1');
-    } catch {
-      /* ignore */
-    }
     logout();
     navigate('/login', { replace: true });
   };
