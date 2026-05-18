@@ -39,6 +39,7 @@ export const APPLE_TESTER_USER: AuthUser = {
   currentCompany: 'Apple',
   almaMater: 'Apple University',
   pastCompanies: [],
+  graduationYear: '2020',
 };
 
 const rawBackendUrl: string = import.meta.env.VITE_BACKEND_URL || '';
@@ -92,6 +93,7 @@ export interface AuthUser {
   currentCompany?: string;
   almaMater?: string;
   pastCompanies?: string[];
+  graduationYear?: string;
   bio?: string;
   career?: string;
 }

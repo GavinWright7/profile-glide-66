@@ -136,6 +136,7 @@ async function handleLinkedInCallback(req, res) {
       goals: storedProfile?.goals || [],
       bio: storedProfile?.bio || '',
       career: storedProfile?.career || '',
+      graduationYear: storedProfile?.graduation_year != null ? String(storedProfile.graduation_year) : '',
     };
 
     const sessionToken = signToken({ userId: userPayload.id, user: userPayload });
@@ -207,6 +208,7 @@ async function exchangeCode(req, res) {
       goals: storedProfile?.goals || [],
       bio: storedProfile?.bio || '',
       career: storedProfile?.career || '',
+      graduationYear: storedProfile?.graduation_year != null ? String(storedProfile.graduation_year) : '',
     };
 
     const sessionToken = signToken({ userId: userPayload.id, user: userPayload });

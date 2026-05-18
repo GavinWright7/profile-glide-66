@@ -17,6 +17,38 @@ function parsePastCompany(raw: string): { title: string; company: string } {
   return { title: '', company: '' };
 }
 
+/**
+ * Choose "a" vs "an" from the first word of the following phrase (English vowel/consonant sounds).
+ */
+export function indefiniteArticle(followingPhrase: string): 'a' | 'an' {
+  const word = followingPhrase.trim().split(/\s+/)[0] || '';
+  if (!word) return 'a';
+  const lower = word.toLowerCase();
+  if (/^(hour|honest|honor|heir)\b/i.test(lower)) return 'an';
+  if (/^eu\b/i.test(lower)) return 'a';
+  const first = lower[0];
+  if ('aeiou'.includes(first)) {
+    if (first === 'u' && /^(uni|user|usual|use(?!d\b))\b/i.test(lower)) return 'a';
+    return 'an';
+  }
+  return 'a';
+}
+
+function educationLine(almaMater: string, graduationYear: string | undefined): string | null {
+  const school = almaMater.trim();
+  if (!school) return null;
+  const y = graduationYear?.trim() ?? '';
+  if (!y || !/^\d{4}$/.test(y)) {
+    return `I studied at ${school}.`;
+  }
+  const yearNum = parseInt(y, 10);
+  const currentYear = new Date().getFullYear();
+  if (yearNum >= currentYear) {
+    return `I am currently studying at ${school} and will graduate in ${y}.`;
+  }
+  return `I studied at ${school} and graduated in ${y}.`;
+}
+
 /** Template bio from stored professional background (pastCompanies → first past job). */
 export function generateBio(profile: {
   firstName?: string;
@@ -28,25 +60,33 @@ export function generateBio(profile: {
 }): string {
   const parts: string[] = [];
   parts.push(`Hi, I'm ${profile.firstName || 'there'}.`);
+
   if (profile.currentJobTitle && profile.currentCompany) {
-    parts.push(`I currently work as a ${profile.currentJobTitle} at ${profile.currentCompany}.`);
+    const a = indefiniteArticle(profile.currentJobTitle);
+    parts.push(
+      `I currently work as ${a} ${profile.currentJobTitle} at ${profile.currentCompany}.`
+    );
   } else if (profile.currentJobTitle) {
-    parts.push(`I currently work as a ${profile.currentJobTitle}.`);
+    const a = indefiniteArticle(profile.currentJobTitle);
+    parts.push(`I currently work as ${a} ${profile.currentJobTitle}.`);
   }
+
   if (profile.pastJobs && profile.pastJobs.length > 0) {
     const { title, company } = profile.pastJobs[0];
     if (title && company) {
-      parts.push(`Previously, I was a ${title} at ${company}.`);
+      const a = indefiniteArticle(title);
+      parts.push(`Previously, I was ${a} ${title} at ${company}.`);
     } else if (company) {
       parts.push(`Previously, I worked at ${company}.`);
     } else if (title) {
-      parts.push(`Previously, I was a ${title}.`);
+      const a = indefiniteArticle(title);
+      parts.push(`Previously, I was ${a} ${title}.`);
     }
   }
-  if (profile.almaMater) {
-    const grad = profile.graduationYear ? ` (${profile.graduationYear})` : '';
-    parts.push(`I studied at ${profile.almaMater}${grad}.`);
-  }
+
+  const edu = educationLine(profile.almaMater ?? '', profile.graduationYear);
+  if (edu) parts.push(edu);
+
   parts.push(`Let's connect!`);
   return parts.join(' ');
 }
@@ -62,7 +102,7 @@ function bioSourceFromUser(user: AuthUser | null | undefined) {
     currentCompany: user?.currentCompany,
     pastJobs,
     almaMater: user?.almaMater,
-    graduationYear: undefined as string | undefined,
+    graduationYear: user?.graduationYear?.trim() || undefined,
   };
 }
 
@@ -73,12 +113,10 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [sourceUser, setSourceUser] = useState<AuthUser | null>(null);
 
   const loadMe = useCallback(async () => {
     if (!token || isDemoUser) {
       const u = user;
-      setSourceUser(u);
       const existing = (u?.bio ?? '').trim();
       setBio(existing || generateBio(bioSourceFromUser(u ?? undefined)));
       setLoading(false);
@@ -92,7 +130,6 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error((data as { error?: string }).error || 'Failed to load profile');
       const u = data.user;
       if (u) {
-        setSourceUser(u);
         const existing = (u.bio ?? '').trim();
         setBio(existing || generateBio(bioSourceFromUser(u)));
       }
@@ -106,11 +143,6 @@ export default function ProfilePage() {
   useEffect(() => {
     void loadMe();
   }, [loadMe]);
-
-  const handleGenerate = () => {
-    const base = sourceUser ?? user;
-    setBio(generateBio(bioSourceFromUser(base ?? undefined)));
-  };
 
   const save = async () => {
     if (!token || isDemoUser) {
@@ -126,7 +158,6 @@ export default function ProfilePage() {
       const { token: newToken, user: newUser } = data;
       if (newToken && newUser) {
         await updateSession({ token: newToken, user: newUser });
-        setSourceUser(newUser);
       }
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
@@ -169,10 +200,6 @@ export default function ProfilePage() {
                     onChange={(e) => setBio(e.target.value)}
                   />
                 </div>
-
-                <Button type="button" variant="secondary" className="w-full" onClick={handleGenerate}>
-                  Generate bio
-                </Button>
 
                 <Button className="w-full" onClick={() => void save()} disabled={saving}>
                   {saving ? (

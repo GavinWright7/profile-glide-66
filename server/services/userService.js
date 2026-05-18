@@ -4,6 +4,8 @@
  *
  * MIGRATION NEEDED — run in NeonDB before deploying:
  * ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio TEXT;
+ * ALTER TABLE profiles ADD COLUMN IF NOT EXISTS graduation_year TEXT;
+ * (See server/migrations/008_graduation_year.sql)
  */
 const db = require('./db');
 
@@ -104,13 +106,14 @@ async function updateInterests(linkedinSubjectId, interests) {
 }
 
 async function updateProfessionalBackground(linkedinSubjectId, data) {
-  const { currentJobTitle, currentCompany, almaMater, pastCompanies } = data;
+  const { currentJobTitle, currentCompany, almaMater, pastCompanies, graduationYear } = data;
   const res = await db.query(
     `UPDATE profiles p
      SET current_job_title = $2,
          current_company = $3,
          alma_mater = $4,
          past_companies = $5,
+         graduation_year = $6,
          updated_at = NOW()
      FROM users u
      WHERE u.id = p.user_id AND u.linkedin_subject_id = $1
@@ -121,6 +124,7 @@ async function updateProfessionalBackground(linkedinSubjectId, data) {
       currentCompany || null,
       almaMater || null,
       Array.isArray(pastCompanies) ? pastCompanies : [],
+      graduationYear != null && String(graduationYear).trim() !== '' ? String(graduationYear).trim() : null,
     ]
   );
   return res.rows[0] || null;
@@ -151,6 +155,10 @@ function mergeJwtUserWithProfileRow(baseUser, row) {
         currentCompany: row.current_company ?? baseUser.currentCompany,
         almaMater: row.alma_mater ?? baseUser.almaMater,
         pastCompanies: Array.isArray(row.past_companies) ? row.past_companies : baseUser.pastCompanies ?? [],
+        graduationYear:
+          row.graduation_year != null && String(row.graduation_year).trim() !== ''
+            ? String(row.graduation_year).trim()
+            : baseUser.graduationYear ?? '',
         bio:
           row.bio != null && String(row.bio).trim() !== ''
             ? String(row.bio).trim()
@@ -171,7 +179,7 @@ async function getMergedUserForAuth(linkedinSubjectId, jwtUser) {
   return mergeJwtUserWithProfileRow(jwtUser, row);
 }
 
-const MAX_BIO_LENGTH = 300;
+const MAX_BIO_LENGTH = 800;
 
 /**
  * PATCH fields: bio, career, interests (partial). interests uses same rules as PUT /profile/interests.

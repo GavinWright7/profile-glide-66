@@ -65,7 +65,8 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
 
   const hasProfessionalBackground =
     user?.currentJobTitle?.trim() &&
-    user?.almaMater?.trim();
+    user?.almaMater?.trim() &&
+    user?.graduationYear?.trim();
   if (!hasProfessionalBackground) {
     return <Navigate to="/onboarding/professional-background" replace />;
   }

@@ -13,7 +13,8 @@ ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS current_company TEXT,
   ADD COLUMN IF NOT EXISTS alma_mater TEXT,
   ADD COLUMN IF NOT EXISTS past_companies TEXT[] DEFAULT '{}',
-  ADD COLUMN IF NOT EXISTS goals TEXT[] DEFAULT '{}';
+  ADD COLUMN IF NOT EXISTS goals TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS graduation_year TEXT;
 `;
 
 async function run() {
@@ -24,7 +25,7 @@ async function run() {
 
   try {
     await db.query(SQL);
-    console.log('Migration complete: profile columns (current_job_title, current_company, alma_mater, past_companies, goals) added if missing.');
+    console.log('Migration complete: profile columns (including graduation_year) added if missing.');
   } catch (err) {
     console.error('Migration failed:', err.message);
     process.exit(1);

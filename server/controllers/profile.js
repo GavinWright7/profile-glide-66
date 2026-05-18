@@ -5,7 +5,7 @@ const { INTEREST_OPTIONS } = require('../constants/interests');
 const { getSubcategoriesForIndustry } = require('../constants/subcategories');
 const interestService = require('../services/interestService');
 
-const MAX_BIO_LEN = 300;
+const MAX_BIO_LEN = 800;
 
 /**
  * PUT /profile/linkedin-url
@@ -92,15 +92,16 @@ async function updateInterests(req, res) {
 
 /**
  * PUT /profile/professional-background
- * Body: { currentJobTitle, currentCompany, almaMater, pastCompanies?: string[] }
+ * Body: { currentJobTitle, currentCompany, almaMater, graduationYear?, pastCompanies?: string[] }
  */
 async function updateProfessionalBackground(req, res) {
-  const { currentJobTitle, currentCompany, almaMater, pastCompanies } = req.body;
+  const { currentJobTitle, currentCompany, almaMater, graduationYear, pastCompanies } = req.body;
   const user = req.user;
 
   const jobTitle = String(currentJobTitle ?? '').trim();
   const company = String(currentCompany ?? '').trim();
   const alma = String(almaMater ?? '').trim();
+  const gradRaw = graduationYear != null ? String(graduationYear).trim() : '';
   const past = Array.isArray(pastCompanies)
     ? pastCompanies.map((s) => String(s ?? '').trim()).filter(Boolean)
     : [];
@@ -111,12 +112,25 @@ async function updateProfessionalBackground(req, res) {
     });
   }
 
+  if (!gradRaw || !/^\d{4}$/.test(gradRaw)) {
+    return res.status(400).json({
+      error: 'Graduation year must be a 4-digit year (e.g. 2026)',
+    });
+  }
+  const gradNum = parseInt(gradRaw, 10);
+  if (gradNum < 1950 || gradNum > 2100) {
+    return res.status(400).json({
+      error: 'Graduation year must be between 1950 and 2100',
+    });
+  }
+
   try {
     await userService.updateProfessionalBackground(user.id, {
       currentJobTitle: jobTitle,
       currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
+      graduationYear: gradRaw,
     });
     const updatedUser = {
       ...user,
@@ -124,6 +138,7 @@ async function updateProfessionalBackground(req, res) {
       currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
+      graduationYear: gradRaw,
     };
 
     const token = signToken({ userId: user.id, user: updatedUser });
@@ -185,6 +200,10 @@ async function getProfile(req, res) {
     const currentCompany = stored?.current_company ?? user.currentCompany ?? null;
     const almaMater = stored?.alma_mater ?? user.almaMater ?? null;
     const pastCompanies = stored?.past_companies ?? user.pastCompanies ?? [];
+    const graduationYear =
+      stored?.graduation_year != null && String(stored.graduation_year).trim() !== ''
+        ? String(stored.graduation_year).trim()
+        : user.graduationYear ?? '';
     const bio =
       stored?.bio != null && String(stored.bio).trim() !== ''
         ? String(stored.bio).trim()
@@ -197,6 +216,7 @@ async function getProfile(req, res) {
       currentCompany,
       almaMater,
       pastCompanies,
+      graduationYear,
       bio,
       career,
     };

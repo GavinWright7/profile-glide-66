@@ -18,6 +18,9 @@ const OnboardingProfessionalBackgroundPage = () => {
   const [currentJobTitle, setCurrentJobTitle] = useState(user?.currentJobTitle ?? '');
   const [currentCompany, setCurrentCompany] = useState(user?.currentCompany ?? '');
   const [almaMater, setAlmaMater] = useState(user?.almaMater ?? '');
+  const [graduationYear, setGraduationYear] = useState(
+    user?.graduationYear != null ? String(user.graduationYear) : ''
+  );
   const [pastCompanies, setPastCompanies] = useState<string[]>(user?.pastCompanies ?? []);
   const [newPastCompany, setNewPastCompany] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -35,14 +38,19 @@ const OnboardingProfessionalBackgroundPage = () => {
     setPastCompanies((prev) => prev.filter((c) => c !== company));
   };
 
-  const canContinue = currentJobTitle.trim() && almaMater.trim();
+  const gradYearOk = /^\d{4}$/.test(graduationYear.trim());
+  const gradNum = gradYearOk ? parseInt(graduationYear.trim(), 10) : NaN;
+  const gradInRange = gradNum >= 1950 && gradNum <= 2100;
+
+  const canContinue =
+    currentJobTitle.trim() && almaMater.trim() && gradYearOk && gradInRange;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!canContinue) {
-      setError('Please fill in job title and alma mater.');
+      setError('Please fill in job title, alma mater, and a valid 4-digit graduation year.');
       return;
     }
 
@@ -57,6 +65,7 @@ const OnboardingProfessionalBackgroundPage = () => {
         currentJobTitle: currentJobTitle.trim(),
         currentCompany: currentCompany.trim() || null,
         almaMater: almaMater.trim(),
+        graduationYear: graduationYear.trim(),
         pastCompanies,
       });
 
@@ -141,6 +150,25 @@ const OnboardingProfessionalBackgroundPage = () => {
               disabled={loading}
               autoComplete="off"
             />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              Graduation year <span className="text-destructive">*</span>
+            </label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="e.g. 2026 — year you graduated or expect to graduate"
+              value={graduationYear}
+              onChange={(e) => setGraduationYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              className="font-medium"
+              disabled={loading}
+              autoComplete="off"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Used to describe your school experience in your profile bio.
+            </p>
           </div>
 
           <div>
