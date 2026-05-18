@@ -12,12 +12,9 @@ import ConnectionsPage from "./pages/ConnectionsPage";
 import HistoryPage from "./pages/HistoryPage";
 import SavedProfilesPage from "./pages/SavedProfilesPage";
 import SettingsPage from "./pages/SettingsPage";
-import SocialModePage from "./pages/SocialModePage";
-import OnboardingInterestsPage from "./pages/OnboardingInterestsPage";
-import OnboardingSubcategoriesPage from "./pages/OnboardingSubcategoriesPage";
+import ProfilePage from "./pages/ProfilePage";
 import OnboardingLinkedInPage from "./pages/OnboardingLinkedInPage";
 import OnboardingProfessionalBackgroundPage from "./pages/OnboardingProfessionalBackgroundPage";
-import OnboardingGoalsPage from "./pages/OnboardingGoalsPage";
 import NotFound from "./pages/NotFound";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ConnectionsProvider } from "./context/ConnectionsContext";
@@ -50,24 +47,16 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
-/** Redirects to onboarding if user has no interests, no valid linkedin_url, no professional background, or no goals. */
+/** Redirects to onboarding if user has no valid linkedin_url or incomplete professional background. */
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isDemoUser } = useAuth();
   const location = useLocation();
-  const isInterests = location.pathname === '/onboarding/interests';
-  const isSubcategories = location.pathname === '/onboarding/subcategories';
   const isLinkedIn = location.pathname === '/onboarding/linkedin-url';
   const isProfessionalBackground = location.pathname === '/onboarding/professional-background';
-  const isGoals = location.pathname === '/onboarding/goals';
 
   if (isLoading) return null;
   if (isDemoUser) return <>{children}</>;
-  if (isInterests || isSubcategories || isLinkedIn || isProfessionalBackground || isGoals) return <>{children}</>;
-
-  const hasInterests = Array.isArray(user?.interests) && user.interests.length >= 3;
-  if (!hasInterests) {
-    return <Navigate to="/onboarding/interests" replace />;
-  }
+  if (isLinkedIn || isProfessionalBackground) return <>{children}</>;
 
   const hasValidUrl = user?.linkedinUrl && isValidLinkedInUrl(user.linkedinUrl);
   if (!hasValidUrl) {
@@ -79,11 +68,6 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
     user?.almaMater?.trim();
   if (!hasProfessionalBackground) {
     return <Navigate to="/onboarding/professional-background" replace />;
-  }
-
-  const hasGoals = Array.isArray(user?.goals) && user.goals.length >= 1;
-  if (!hasGoals) {
-    return <Navigate to="/onboarding/goals" replace />;
   }
 
   return <>{children}</>;
@@ -108,22 +92,6 @@ const App = () => (
               }
             />
             <Route
-              path="/onboarding/interests"
-              element={
-                <ProtectedRoute>
-                  <OnboardingInterestsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/onboarding/subcategories"
-              element={
-                <ProtectedRoute>
-                  <OnboardingSubcategoriesPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/onboarding/linkedin-url"
               element={
                 <ProtectedRoute>
@@ -136,14 +104,6 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <OnboardingProfessionalBackgroundPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/onboarding/goals"
-              element={
-                <ProtectedRoute>
-                  <OnboardingGoalsPage />
                 </ProtectedRoute>
               }
             />
@@ -206,22 +166,24 @@ const App = () => (
               }
             />
             <Route
-              path="/social-mode"
-              element={
-                <ProtectedRoute>
-                  <OnboardingGuard>
-                    <SocialModePage />
-                  </OnboardingGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/settings"
               element={
                 <ProtectedRoute>
                   <AnimatedTabPage>
                     <SettingsPage />
                   </AnimatedTabPage>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <AnimatedTabPage>
+                      <ProfilePage />
+                    </AnimatedTabPage>
+                  </OnboardingGuard>
                 </ProtectedRoute>
               }
             />

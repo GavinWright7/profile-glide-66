@@ -192,6 +192,7 @@ async function getNearby(req, res) {
           jobTitle,
           photoUrl: profile?.photo_url || '',
           linkedinUrl: profile?.linkedin_url || '',
+          bio: profile?.bio || '',
           distanceMeters: Math.round(dist),
           interests: interests,
           relevanceScore,

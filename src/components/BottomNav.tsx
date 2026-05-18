@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Radar, Users, History, Settings, Home } from 'lucide-react';
+import { Radar, Users, History, Settings, Home, User } from 'lucide-react';
 import { useSharing } from '../hooks/useSharing';
 import { swipeDirectionRef } from '@/utils/tabNavigation';
 
@@ -9,6 +9,7 @@ const tabs = [
   { path: '/connections', icon: Users, label: 'Connections' },
   { path: '/history', icon: History, label: 'History' },
   { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/profile', icon: User, label: 'Profile' },
 ];
 
 const BottomNav = () => {

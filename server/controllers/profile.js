@@ -179,22 +179,25 @@ async function getProfile(req, res) {
   try {
     const stored = await userService.getProfileByLinkedInId(user.id);
     const linkedinUrl = stored?.linkedin_url ?? user.linkedinUrl ?? '';
-    const interests = stored?.interests ?? user.interests ?? [];
     const currentJobTitle = stored?.current_job_title ?? user.currentJobTitle ?? null;
     const currentCompany = stored?.current_company ?? user.currentCompany ?? null;
     const almaMater = stored?.alma_mater ?? user.almaMater ?? null;
     const pastCompanies = stored?.past_companies ?? user.pastCompanies ?? [];
-    const goals = stored?.goals ?? user.goals ?? [];
+    const bio =
+      stored?.bio != null && String(stored.bio).trim() !== ''
+        ? String(stored.bio).trim()
+        : user.bio ?? '';
     const merged = {
       ...user,
       linkedinUrl,
-      interests,
       currentJobTitle,
       currentCompany,
       almaMater,
       pastCompanies,
-      goals,
+      bio,
     };
+    delete merged.interests;
+    delete merged.goals;
     res.json({ user: merged });
   } catch (err) {
     console.error('[profile] getProfile error:', err.message);
@@ -202,4 +205,36 @@ async function getProfile(req, res) {
   }
 }
 
-module.exports = { updateLinkedInUrl, updateInterests, getProfile, getInterestsOptions, updateProfessionalBackground, updateGoals };
+/**
+ * PATCH /profile
+ * Body: { bio: string }
+ */
+async function patchProfile(req, res) {
+  const user = req.user;
+  const { bio } = req.body;
+  const trimmed = bio != null ? String(bio).trim() : '';
+
+  try {
+    await userService.updateBio(user.id, trimmed);
+    const updatedUser = { ...user, bio: trimmed };
+    delete updatedUser.interests;
+    delete updatedUser.goals;
+    const token = signToken({ userId: user.id, user: updatedUser });
+
+    console.log('[profile] bio updated for', user.id);
+    res.json({ token, user: updatedUser });
+  } catch (err) {
+    console.error('[profile] patchProfile error:', err.message);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+}
+
+module.exports = {
+  updateLinkedInUrl,
+  updateInterests,
+  getProfile,
+  getInterestsOptions,
+  updateProfessionalBackground,
+  updateGoals,
+  patchProfile,
+};

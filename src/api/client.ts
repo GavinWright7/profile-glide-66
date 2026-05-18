@@ -124,4 +124,13 @@ export async function apiPut(path: string, body: object): Promise<Response> {
   });
 }
 
+/** PATCH with JSON body */
+export async function apiPatch(path: string, body: object): Promise<Response> {
+  return apiRequest(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export { SESSION_EXPIRED_MESSAGE };

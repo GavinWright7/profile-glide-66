@@ -33,14 +33,12 @@ export const APPLE_TESTER_USER: AuthUser = {
   picture: '',
   headline: 'Apple App Review',
   linkedinUrl: 'https://linkedin.com/in/apple-reviewer',
-  interests: ['Technology', 'Software', 'Product Management'],
   bio: '',
   career: 'App Reviewer',
   currentJobTitle: 'App Reviewer',
   currentCompany: 'Apple',
   almaMater: 'Apple University',
   pastCompanies: [],
-  goals: ['Test apps'],
 };
 
 const rawBackendUrl: string = import.meta.env.VITE_BACKEND_URL || '';
@@ -90,12 +88,10 @@ export interface AuthUser {
   picture: string;
   headline: string;
   linkedinUrl: string;
-  interests?: string[];
   currentJobTitle?: string;
   currentCompany?: string;
   almaMater?: string;
   pastCompanies?: string[];
-  goals?: string[];
   bio?: string;
   career?: string;
 }

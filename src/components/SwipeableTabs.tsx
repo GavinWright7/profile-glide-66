@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { swipeDirectionRef } from '@/utils/tabNavigation';
 
-const TAB_PATHS = ['/', '/radar', '/connections', '/history', '/settings'];
+const TAB_PATHS = ['/', '/radar', '/connections', '/history', '/settings', '/profile'];
 
 const SWIPE_THRESHOLD = 50;
 

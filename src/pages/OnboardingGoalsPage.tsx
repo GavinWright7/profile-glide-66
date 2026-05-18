@@ -53,9 +53,9 @@ const GOAL_OPTIONS = [
  * Last step before entering the main app.
  */
 const OnboardingGoalsPage = () => {
-  const { user, token, updateSession } = useAuth();
+  const { token, updateSession } = useAuth();
   const navigate = useNavigate();
-  const [selected, setSelected] = useState<string[]>(user?.goals ?? []);
+  const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
