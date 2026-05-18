@@ -6,7 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import {
   AuthUser,
   AuthSession,
-  loadSession,
+  loadSessionAsync,
   saveSession,
   saveDemoSession,
   clearSession,
@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function bootAuth() {
-      const session = loadSession();
+      const session = await loadSessionAsync();
 
       if (!session) {
         authLog('boot: no session');
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Validate structure
       if (!isTokenStructurallyValid(storedToken)) {
         authLog('boot: token structurally invalid, clearing');
-        clearSession();
+        await clearSession();
         if (!cancelled) {
           setToken(null);
           setUser(null);
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Check expiry client-side
       if (isTokenExpired(storedToken)) {
         authLog('boot: token expired, clearing');
-        clearSession();
+        await clearSession();
         if (!cancelled) {
           setToken(null);
           setUser(null);
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!validatedUser) {
         authLog('boot: backend validation failed, clearing');
-        clearSession();
+        await clearSession();
         setToken(null);
         setUser(null);
         setIsLoading(false);
@@ -152,7 +152,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const detail = (e as CustomEvent<{ message?: string }>)?.detail;
       const message = detail?.message ?? SESSION_EXPIRED_MESSAGE;
       authLog('logout triggered by 401/expired');
-      clearSession();
+      void (async () => {
+        await clearSession();
+      })();
       setToken(null);
       setUser(null);
       toast.error(message, { duration: 4000 });
@@ -235,7 +237,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authLog('logout');
-    clearSession();
+    void (async () => {
+      await clearSession();
+    })();
     setToken(null);
     setUser(null);
   }, []);
