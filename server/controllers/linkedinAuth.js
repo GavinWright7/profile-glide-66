@@ -23,7 +23,7 @@ function startLinkedInOAuth(req, res) {
     state: generateState(),
   });
 
-  const linkedInAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
+  const linkedInAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString().replace(/\+/g, "%20")}`;
   console.log('[auth] LinkedIn OAuth start, redirect_uri=', config.LINKEDIN_REDIRECT_URI);
   res.redirect(linkedInAuthUrl);
 }
