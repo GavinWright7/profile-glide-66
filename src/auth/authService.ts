@@ -173,7 +173,11 @@ export function saveSession(session: AuthSession): void {
 
 export async function loadSessionAsync(): Promise<AuthSession | null> {
   try {
-    const { value } = await Preferences.get({ key: SESSION_KEY });
+    const prefsPromise = Preferences.get({ key: SESSION_KEY });
+    const timeoutPromise = new Promise<{ value: null }>((resolve) =>
+      setTimeout(() => resolve({ value: null }), 3000)
+    );
+    const { value } = await Promise.race([prefsPromise, timeoutPromise]);
     if (value) {
       const parsed = JSON.parse(value) as AuthSession;
       if (parsed?.token && parsed?.user) {
