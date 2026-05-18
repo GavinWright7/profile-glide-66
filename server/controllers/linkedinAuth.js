@@ -16,6 +16,7 @@ function buildLinkedInAuthorizationUrl(isMobile) {
     state: generateState(),
   });
 
+
   // Native / in-app browser: Microsoft recommends this for extended login options on mobile.
   if (isMobile) {
     params.set('enable_extended_login', 'true');

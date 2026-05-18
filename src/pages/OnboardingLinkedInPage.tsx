@@ -85,6 +85,17 @@ const OnboardingLinkedInPage = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div className="rounded-xl border border-border bg-muted/40 px-3 py-3 space-y-2">
+            <p className="text-[11px] font-semibold text-foreground">How to find your LinkedIn URL:</p>
+            <ol className="text-[10px] text-muted-foreground space-y-1.5 list-decimal list-inside leading-relaxed">
+              <li>Open the LinkedIn app or website</li>
+              <li>Go to your profile</li>
+              <li>Tap the three dots (•••) next to &quot;Add section&quot;</li>
+              <li>Tap &quot;Share via...&quot; or &quot;Copy link&quot;</li>
+              <li>Paste the copied link below</li>
+            </ol>
+          </div>
+
           <Input
             type="text"
             inputMode="text"

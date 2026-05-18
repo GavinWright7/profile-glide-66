@@ -6,7 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import {
   AuthUser,
   AuthSession,
-  loadSession,
+  loadSessionAsync,
   saveSession,
   saveDemoSession,
   clearSession,
@@ -62,83 +62,108 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
+  // Failsafe: never leave ProtectedRoute stuck on spinner if native bridge hangs
+  useEffect(() => {
+    const safety = setTimeout(() => {
+      setIsLoading((prev) => {
+        if (prev) {
+          console.warn('[Auth] safety timeout: forcing isLoading=false after 10s');
+        }
+        return false;
+      });
+      setIsAuthReady(true);
+    }, 10000);
+    return () => clearTimeout(safety);
+  }, []);
+
   // Boot: restore and validate session before marking authenticated
   useEffect(() => {
     let cancelled = false;
 
     async function bootAuth() {
-      const session = loadSession();
+      try {
+        const session = await loadSessionAsync();
 
-      if (!session) {
-        authLog('boot: no session');
-        if (!cancelled) {
+        if (!session) {
+          authLog('boot: no session');
+          if (!cancelled) {
+            setToken(null);
+            setUser(null);
+            setIsLoading(false);
+            setIsAuthReady(true);
+          }
+          return;
+        }
+
+        const { token: storedToken, user: storedUser } = session;
+
+        // Demo: no backend validation needed
+        if (isDemoToken(storedToken)) {
+          authLog('boot: demo session restored');
+          if (!cancelled) {
+            setToken(storedToken);
+            setUser(storedUser);
+            setIsLoading(false);
+            setIsAuthReady(true);
+          }
+          return;
+        }
+
+        // Validate structure
+        if (!isTokenStructurallyValid(storedToken)) {
+          authLog('boot: token structurally invalid, clearing');
+          await clearSession();
+          if (!cancelled) {
+            setToken(null);
+            setUser(null);
+            setIsLoading(false);
+            setIsAuthReady(true);
+          }
+          return;
+        }
+
+        // Check expiry client-side
+        if (isTokenExpired(storedToken)) {
+          authLog('boot: token expired, clearing');
+          await clearSession();
+          if (!cancelled) {
+            setToken(null);
+            setUser(null);
+            setIsLoading(false);
+            setIsAuthReady(true);
+          }
+          return;
+        }
+
+        // Validate with backend
+        const validatedUser = await validateSessionWithBackend(storedToken);
+        if (cancelled) return;
+
+        if (!validatedUser) {
+          authLog('boot: backend validation failed, clearing');
+          await clearSession();
           setToken(null);
           setUser(null);
           setIsLoading(false);
           setIsAuthReady(true);
+          return;
         }
-        return;
-      }
 
-      const { token: storedToken, user: storedUser } = session;
-
-      // Demo: no backend validation needed
-      if (isDemoToken(storedToken)) {
-        authLog('boot: demo session restored');
-        if (!cancelled) {
-          setToken(storedToken);
-          setUser(storedUser);
-          setIsLoading(false);
-          setIsAuthReady(true);
-        }
-        return;
-      }
-
-      // Validate structure
-      if (!isTokenStructurallyValid(storedToken)) {
-        authLog('boot: token structurally invalid, clearing');
-        clearSession();
-        if (!cancelled) {
-          setToken(null);
-          setUser(null);
-          setIsLoading(false);
-          setIsAuthReady(true);
-        }
-        return;
-      }
-
-      // Check expiry client-side
-      if (isTokenExpired(storedToken)) {
-        authLog('boot: token expired, clearing');
-        clearSession();
-        if (!cancelled) {
-          setToken(null);
-          setUser(null);
-          setIsLoading(false);
-          setIsAuthReady(true);
-        }
-        return;
-      }
-
-      // Validate with backend
-      const validatedUser = await validateSessionWithBackend(storedToken);
-      if (cancelled) return;
-
-      if (!validatedUser) {
-        authLog('boot: backend validation failed, clearing');
-        clearSession();
-        setToken(null);
-        setUser(null);
+        authLog('boot: session validated', validatedUser.id);
+        setToken(storedToken);
+        setUser(validatedUser);
         setIsLoading(false);
         setIsAuthReady(true);
-        return;
+      } catch (err) {
+        console.error('[Auth] bootAuth crashed:', err);
+        if (!cancelled) {
+          await clearSession();
+          setToken(null);
+          setUser(null);
+          setIsLoading(false);
+          setIsAuthReady(true);
+        }
       }
-
-      authLog('boot: session validated', validatedUser.id);
-      setToken(storedToken);
-      setUser(validatedUser);
-      setIsLoading(false);
-      setIsAuthReady(true);
     }
 
     bootAuth();
@@ -151,7 +176,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const detail = (e as CustomEvent<{ message?: string }>)?.detail;
       const message = detail?.message ?? SESSION_EXPIRED_MESSAGE;
       authLog('logout triggered by 401/expired');
-      clearSession();
+      void (async () => {
+        await clearSession();
+      })();
       setToken(null);
       setUser(null);
       toast.error(message, { duration: 4000 });
@@ -247,7 +274,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    clearSession();
+    void (async () => {
+      await clearSession();
+    })();
     setToken(null);
     setUser(null);
   }, []);

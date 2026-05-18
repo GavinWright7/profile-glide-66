@@ -20,5 +20,6 @@ router.put('/interests', requireAuth, updateInterests);
 router.put('/professional-background', requireAuth, updateProfessionalBackground);
 router.put('/goals', requireAuth, updateGoals);
 router.get('/', requireAuth, getProfile);
+router.patch('/', requireAuth, patchMe);
 
 module.exports = router;

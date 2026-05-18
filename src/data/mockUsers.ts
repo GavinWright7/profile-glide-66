@@ -8,11 +8,8 @@ export interface NearbyUser {
   linkedinProfileUrl: string;
   linkedinId: string;
   distance: number; // meters
-  angle: number; // degrees on radar
-  /** Public profile extras from discovery API */
+  angle: number; // degrees on radar (legacy)
   bio?: string;
-  career?: string;
-  interests?: string[];
 }
 
 export interface Connection {

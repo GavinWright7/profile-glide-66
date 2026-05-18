@@ -11,7 +11,7 @@ interface PremiumPaywallProps {
 }
 
 const PREMIUM_FEATURES = [
-  'Best matches — see people who match your interests first',
+  'Best matches — see likely connections closer to you first',
   'Radar filters — filter by industry and subcategory',
   'Expanded range — testing build uses US-wide radius for all users',
 ];

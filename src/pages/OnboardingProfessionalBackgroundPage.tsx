@@ -10,7 +10,7 @@ import { saveSession } from '../auth/authService';
 
 /**
  * Onboarding step: Professional Background (job title, company, alma mater, past companies).
- * Required after LinkedIn URL, before Goals.
+ * Required after LinkedIn URL. Completing this step finishes onboarding.
  */
 const OnboardingProfessionalBackgroundPage = () => {
   const { user, token, updateSession } = useAuth();
@@ -69,7 +69,7 @@ const OnboardingProfessionalBackgroundPage = () => {
       const { token: newToken, user: updatedUser } = data;
       saveSession({ token: newToken, user: updatedUser });
       updateSession({ token: newToken, user: updatedUser });
-      navigate('/onboarding/goals', { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {

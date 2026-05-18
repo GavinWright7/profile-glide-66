@@ -6,14 +6,18 @@
  *  2. Backend handles LinkedIn OAuth and redirects to airlinks://auth?token=JWT
  *  3. The app receives the deep link, extracts the token, and stores it here.
  *
- * Auth state is determined by validated token + backend /auth/me, not just storage.
+ * On Capacitor iOS, localStorage does not persist across restarts; session JSON
+ * is stored in @capacitor/preferences and hydrated on boot via loadSessionAsync().
  */
 
 import { Capacitor } from '@capacitor/core';
+import { Preferences } from '@capacitor/preferences';
 
-const TOKEN_KEY = 'pg_session_token';
-const USER_KEY = 'pg_user';
+const SESSION_KEY = 'auth_session';
 const DEMO_KEY = 'pg_demo_mode';
+const LS_TOKEN = 'pg_token';
+const LS_USER = 'pg_user';
+
 export const LOGGED_OUT_FLAG = 'pg_just_logged_out';
 
 /** Demo user ID — used to detect Apple Tester / review mode */
@@ -29,14 +33,12 @@ export const APPLE_TESTER_USER: AuthUser = {
   picture: '',
   headline: 'Apple App Review',
   linkedinUrl: 'https://linkedin.com/in/apple-reviewer',
-  interests: ['Technology', 'Software', 'Product Management'],
   bio: '',
   career: 'App Reviewer',
   currentJobTitle: 'App Reviewer',
   currentCompany: 'Apple',
   almaMater: 'Apple University',
   pastCompanies: [],
-  goals: ['Test apps'],
 };
 
 const rawBackendUrl: string = import.meta.env.VITE_BACKEND_URL || '';
@@ -47,7 +49,7 @@ if (rawBackendUrl && !rawBackendUrl.includes('YOUR_MAC_LAN_IP')) {
 } else if (!rawBackendUrl || rawBackendUrl.includes('YOUR_MAC_LAN_IP')) {
   console.error(
     '[AirLinks] VITE_BACKEND_URL is not set.\n' +
-    'Edit .env and set it to your Mac\'s LAN IP, e.g.:\n' +
+    "Edit .env and set it to your Mac's LAN IP, e.g.:\n" +
     '  VITE_BACKEND_URL=http://192.168.1.42:3001\n' +
     'Then run: npm run build && LANG=en_US.UTF-8 npx cap sync ios'
   );
@@ -86,13 +88,10 @@ export interface AuthUser {
   picture: string;
   headline: string;
   linkedinUrl: string;
-  interests?: string[];
   currentJobTitle?: string;
   currentCompany?: string;
   almaMater?: string;
   pastCompanies?: string[];
-  goals?: string[];
-  /** In-app profile (Neon profiles table) */
   bio?: string;
   career?: string;
 }
@@ -151,44 +150,97 @@ export function getStoredToken(): string | null {
   if (localStorage.getItem(DEMO_KEY) === '1') {
     return 'demo-token';
   }
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(LS_TOKEN);
 }
 
-/** Persist session to localStorage */
 export function saveSession(session: AuthSession): void {
-  localStorage.setItem(TOKEN_KEY, session.token);
-  localStorage.setItem(USER_KEY, JSON.stringify(session.user));
+  try {
+    localStorage.setItem(LS_TOKEN, session.token);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(LS_USER, JSON.stringify(session.user));
+  } catch {
+    /* ignore */
+  }
+  Preferences.set({ key: SESSION_KEY, value: JSON.stringify(session) }).catch(() => {});
 }
 
-/** Load raw session from storage — does NOT validate. Use for boot only. */
-export function loadSession(): AuthSession | null {
-  const isDemo = localStorage.getItem(DEMO_KEY) === '1';
-  if (isDemo) {
-    return { token: 'demo-token', user: APPLE_TESTER_USER };
-  }
-  const token = localStorage.getItem(TOKEN_KEY);
-  const userRaw = localStorage.getItem(USER_KEY);
-  if (!token || !userRaw) return null;
+export async function loadSessionAsync(): Promise<AuthSession | null> {
   try {
-    const user: AuthUser = JSON.parse(userRaw);
-    return { token, user };
+    const prefsPromise = Preferences.get({ key: SESSION_KEY });
+    const timeoutPromise = new Promise<{ value: null }>((resolve) =>
+      setTimeout(() => resolve({ value: null }), 3000)
+    );
+    const { value } = await Promise.race([prefsPromise, timeoutPromise]);
+    if (value) {
+      const parsed = JSON.parse(value) as AuthSession;
+      if (parsed?.token && parsed?.user) {
+        try {
+          localStorage.setItem(LS_TOKEN, parsed.token);
+          localStorage.setItem(LS_USER, JSON.stringify(parsed.user));
+        } catch {
+          /* ignore */
+        }
+        return parsed;
+      }
+    }
   } catch {
-    return null;
+    /* ignore */
   }
+  try {
+    const token = localStorage.getItem(LS_TOKEN);
+    const userRaw = localStorage.getItem(LS_USER);
+    if (localStorage.getItem(DEMO_KEY) === '1') {
+      return { token: 'demo-token', user: APPLE_TESTER_USER };
+    }
+    if (token && userRaw) {
+      return { token, user: JSON.parse(userRaw) as AuthUser };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** Sync read from localStorage only (iOS cold WebView often empty until loadSessionAsync runs). */
+export function loadSession(): AuthSession | null {
+  try {
+    if (localStorage.getItem(DEMO_KEY) === '1') {
+      return { token: 'demo-token', user: APPLE_TESTER_USER };
+    }
+    const token = localStorage.getItem(LS_TOKEN);
+    const userRaw = localStorage.getItem(LS_USER);
+    if (token && userRaw) {
+      return { token, user: JSON.parse(userRaw) as AuthUser };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 /** Save demo session (Apple Tester mode) */
 export function saveDemoSession(): void {
-  localStorage.setItem(DEMO_KEY, '1');
-  localStorage.setItem(TOKEN_KEY, 'demo-token');
-  localStorage.setItem(USER_KEY, JSON.stringify(APPLE_TESTER_USER));
+  try {
+    localStorage.setItem(DEMO_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+  saveSession({ token: 'demo-token', user: APPLE_TESTER_USER });
 }
 
 /** Clear demo session */
 export function clearDemoSession(): void {
-  localStorage.removeItem(DEMO_KEY);
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  try {
+    localStorage.removeItem(DEMO_KEY);
+    localStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_USER);
+  } catch {
+    /* ignore */
+  }
+  void Preferences.remove({ key: SESSION_KEY });
 }
 
 /** Check if current session is demo mode */
@@ -196,17 +248,35 @@ export function isDemoSession(): boolean {
   return localStorage.getItem(DEMO_KEY) === '1';
 }
 
-/** Remove session from localStorage */
-export function clearSession(): void {
+export async function clearSession(): Promise<void> {
   const wasDemo = localStorage.getItem(DEMO_KEY) === '1';
-  localStorage.removeItem(DEMO_KEY);
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  try {
+    localStorage.removeItem(LS_TOKEN);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(LS_USER);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(DEMO_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await Preferences.remove({ key: SESSION_KEY });
+  } catch {
+    /* ignore */
+  }
   if (wasDemo) {
     try {
       localStorage.removeItem('pg_demo_connections');
       localStorage.removeItem('pg_demo_saved_profiles');
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }
 

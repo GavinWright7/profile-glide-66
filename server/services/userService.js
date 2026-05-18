@@ -1,6 +1,9 @@
 /**
  * User and profile persistence in Neon.
- * Handles: upsert user, profile, interests.
+ * Handles: upsert user, profile, and durable profile fields.
+ *
+ * MIGRATION NEEDED — run in NeonDB before deploying:
+ * ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio TEXT;
  */
 const db = require('./db');
 
@@ -24,12 +27,11 @@ async function upsertProfile(userId, data) {
     headline,
     photoUrl,
     linkedinUrl,
-    interests = [],
   } = data;
 
   const res = await db.query(
-    `INSERT INTO profiles (user_id, full_name, first_name, last_name, headline, photo_url, linkedin_url, interests, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    `INSERT INTO profiles (user_id, full_name, first_name, last_name, headline, photo_url, linkedin_url, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
      ON CONFLICT (user_id)
      DO UPDATE SET
        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
@@ -38,7 +40,6 @@ async function upsertProfile(userId, data) {
        headline = COALESCE(EXCLUDED.headline, profiles.headline),
        photo_url = COALESCE(EXCLUDED.photo_url, profiles.photo_url),
        linkedin_url = COALESCE(NULLIF(EXCLUDED.linkedin_url, ''), profiles.linkedin_url),
-       interests = CASE WHEN array_length(EXCLUDED.interests, 1) > 0 THEN EXCLUDED.interests ELSE profiles.interests END,
        updated_at = NOW()
      RETURNING *`,
     [
@@ -49,7 +50,6 @@ async function upsertProfile(userId, data) {
       headline || null,
       photoUrl || null,
       linkedinUrl || null,
-      Array.isArray(interests) ? interests : [],
     ]
   );
   return res.rows[0];
@@ -140,22 +140,30 @@ async function updateGoals(linkedinSubjectId, goals) {
 
 /** Merge JWT user payload with durable Neon profile fields (for /auth/me). */
 function mergeJwtUserWithProfileRow(baseUser, row) {
-  if (!row) return { ...baseUser };
-  return {
-    ...baseUser,
-    name: row.full_name || baseUser.name,
-    headline: row.headline || baseUser.headline,
-    picture: row.photo_url || baseUser.picture,
-    linkedinUrl: row.linkedin_url ?? baseUser.linkedinUrl ?? '',
-    interests: Array.isArray(row.interests) ? row.interests : baseUser.interests ?? [],
-    currentJobTitle: row.current_job_title ?? baseUser.currentJobTitle,
-    currentCompany: row.current_company ?? baseUser.currentCompany,
-    almaMater: row.alma_mater ?? baseUser.almaMater,
-    pastCompanies: Array.isArray(row.past_companies) ? row.past_companies : baseUser.pastCompanies ?? [],
-    goals: Array.isArray(row.goals) ? row.goals : baseUser.goals ?? [],
-    bio: row.bio != null && String(row.bio).trim() !== '' ? String(row.bio) : '',
-    career: row.career != null && String(row.career).trim() !== '' ? String(row.career) : '',
-  };
+  const merged = row
+    ? {
+        ...baseUser,
+        name: row.full_name || baseUser.name,
+        headline: row.headline || baseUser.headline,
+        picture: row.photo_url || baseUser.picture,
+        linkedinUrl: row.linkedin_url ?? baseUser.linkedinUrl ?? '',
+        currentJobTitle: row.current_job_title ?? baseUser.currentJobTitle,
+        currentCompany: row.current_company ?? baseUser.currentCompany,
+        almaMater: row.alma_mater ?? baseUser.almaMater,
+        pastCompanies: Array.isArray(row.past_companies) ? row.past_companies : baseUser.pastCompanies ?? [],
+        bio:
+          row.bio != null && String(row.bio).trim() !== ''
+            ? String(row.bio).trim()
+            : baseUser.bio ?? '',
+        career:
+          row.career != null && String(row.career).trim() !== ''
+            ? String(row.career).trim()
+            : baseUser.career ?? '',
+      }
+    : { ...baseUser };
+  delete merged.interests;
+  delete merged.goals;
+  return merged;
 }
 
 async function getMergedUserForAuth(linkedinSubjectId, jwtUser) {

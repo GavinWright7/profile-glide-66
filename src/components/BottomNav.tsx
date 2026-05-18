@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Radar, Users, History, Settings, Home, UserRound } from 'lucide-react';
+import { Radar, Users, History, Settings, Home, User } from 'lucide-react';
 import { useSharing } from '../hooks/useSharing';
 import { swipeDirectionRef } from '@/utils/tabNavigation';
 
@@ -8,8 +8,8 @@ const tabs = [
   { path: '/radar', icon: Radar, label: 'Discover', showBadgeWhenSharing: true },
   { path: '/connections', icon: Users, label: 'Connections' },
   { path: '/history', icon: History, label: 'History' },
-  { path: '/profile', icon: UserRound, label: 'Profile' },
   { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/profile', icon: User, label: 'Profile' },
 ];
 
 const BottomNav = () => {
@@ -24,7 +24,7 @@ const BottomNav = () => {
       className="fixed bottom-0 left-0 right-0 z-40 glass-surface border-t border-border/50"
       style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
     >
-      <div className="flex justify-around items-center h-12 max-w-lg mx-auto px-1">
+      <div className="flex justify-around items-center h-12 max-w-md mx-auto px-2">
         {tabs.map((tab) => {
           const isActive = location.pathname === tab.path;
           const showBadge = tab.showBadgeWhenSharing && sharing.isSharing && !isActive;
@@ -35,7 +35,7 @@ const BottomNav = () => {
                 swipeDirectionRef.current = 0;
                 navigate(tab.path);
               }}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1.5 transition-colors relative min-w-[48px] ${
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors relative min-w-[56px] ${
                 isActive ? 'text-primary' : 'text-muted-foreground'
               }`}
             >

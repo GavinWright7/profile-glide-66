@@ -50,6 +50,7 @@ export interface NearbyShareUser {
   photoUrl:       string;
   linkedinUrl:    string;
   distanceMeters: number;
+  bio?:           string;
   interests?:     string[];
   /** Public profile from Neon (nearby API) */
   bio?: string;

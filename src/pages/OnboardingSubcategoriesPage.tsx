@@ -20,11 +20,11 @@ const OnboardingSubcategoriesPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { token, user, updateSession } = useAuth();
+  const { token, updateSession } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
-    const ind = (location.state as { industries?: string[] })?.industries ?? user?.interests ?? [];
+    const ind = (location.state as { industries?: string[] })?.industries ?? [];
     if (Array.isArray(ind) && ind.length > 0) {
       setIndustries(ind);
       fetch(`${BACKEND_URL}/profile/interests-options`)
@@ -34,7 +34,7 @@ const OnboardingSubcategoriesPage = () => {
     } else {
       navigate('/onboarding/interests', { replace: true });
     }
-  }, [location.state, user?.interests, navigate]);
+  }, [location.state, navigate]);
 
   const toggle = (industry: string, sub: string) => {
     setSelections((prev) => {
