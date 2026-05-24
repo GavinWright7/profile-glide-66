@@ -13,7 +13,7 @@ interface PremiumPaywallProps {
 const PREMIUM_FEATURES = [
   'Best matches — see likely connections closer to you first',
   'Radar filters — filter by industry and subcategory',
-  'Expanded range — testing build uses US-wide radius for all users',
+  'Expanded range — discover people up to 2000 feet away',
 ];
 
 export default function PremiumPaywall({ onClose, feature }: PremiumPaywallProps) {

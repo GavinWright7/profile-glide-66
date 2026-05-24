@@ -101,9 +101,9 @@ function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
   return 6371000 * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
 }
 
-/** TESTING: US-wide discovery; revert to 152.4 / 609.6 for production. */
-const FREE_RADIUS = 20_000_000;
-const PREMIUM_RADIUS = 20_000_000;
+/** Free: 500 ft; premium: 2000 ft */
+const FREE_RADIUS = 152.4;
+const PREMIUM_RADIUS = 609.6;
 
 let state: SharingState = {
   isSharing:                false,

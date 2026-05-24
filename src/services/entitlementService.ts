@@ -103,8 +103,6 @@ export async function recordApplePurchase(
   }
 }
 
-/**
- * Max radius in meters (TESTING: US-wide; revert to 152.4 / 609.6 for production).
- */
-export const FREE_RADIUS_METERS = 20_000_000;
-export const PREMIUM_RADIUS_METERS = 20_000_000;
+/** Max radius in meters (500 ft free, 2000 ft premium). */
+export const FREE_RADIUS_METERS = 152.4;
+export const PREMIUM_RADIUS_METERS = 609.6;

@@ -7,9 +7,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useConnections } from '@/context/ConnectionsContext';
 import { useSharing } from '@/hooks/useSharing';
 import { apiGet } from '@/api/client';
+import { FREE_RADIUS_METERS } from '@/services/entitlementService';
 import type { NearbyUser } from '@/data/mockUsers';
-
-const RADIUS_M = 30;
 const POLL_MS = 10_000;
 
 type NearbyApiUser = {
@@ -64,14 +63,14 @@ const RadarPage = () => {
       const res = await apiGet('/sharing/nearby', {
         latitude: String(loc.lat),
         longitude: String(loc.lng),
-        radiusMeters: String(RADIUS_M),
+        radiusMeters: String(FREE_RADIUS_METERS),
         sort: 'distance',
       });
       if (!res.ok) return;
       const data = (await res.json()) as { users?: NearbyApiUser[] };
       const list = (data.users ?? [])
         .map(toNearbyUser)
-        .filter((u) => u.distance <= RADIUS_M + 0.5);
+        .filter((u) => u.distance <= FREE_RADIUS_METERS + 0.5);
       setUsers(list);
     } catch {
       /* ignore */
@@ -103,7 +102,7 @@ const RadarPage = () => {
         style={{ paddingTop: 'calc(var(--page-padding-top) + env(safe-area-inset-top, 0px))' }}
       >
         <h1 className="text-2xl font-bold text-foreground">Discover</h1>
-        <p className="text-sm text-muted-foreground mt-1">People within 100 feet of you</p>
+        <p className="text-sm text-muted-foreground mt-1">People within 500 feet of you</p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-padding-x)] pb-24 max-w-md mx-auto w-full">

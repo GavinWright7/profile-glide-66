@@ -51,9 +51,9 @@ module.exports = {
   MOBILE_DEEP_LINK_SCHEME: (process.env.MOBILE_DEEP_LINK_SCHEME || 'airlinks://auth').trim(),
 
   HEARTBEAT_TIMEOUT_MS: 45000,
-  /** TESTING: ~20,000 km — any two U.S. locations (incl. territories). Revert to 152.4 / 609.6 for production. */
-  MAX_DISTANCE_METERS: 20_000_000,
-  MAX_DISTANCE_METERS_PREMIUM: 20_000_000,
+  /** Free tier: 500 ft; premium: 2000 ft */
+  MAX_DISTANCE_METERS: 152.4,
+  MAX_DISTANCE_METERS_PREMIUM: 609.6,
 
   REDIS_GEO_KEY: 'pg:active:geo',
   REDIS_SESSION_PREFIX: 'pg:session:',
