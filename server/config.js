@@ -44,9 +44,11 @@ module.exports = {
   REDIS_URL: process.env.REDIS_URL,
   JWT_SECRET: process.env.JWT_SECRET,
 
-  LINKEDIN_CLIENT_ID: process.env.LINKEDIN_CLIENT_ID,
-  LINKEDIN_CLIENT_SECRET: process.env.LINKEDIN_CLIENT_SECRET,
-  LINKEDIN_REDIRECT_URI: process.env.LINKEDIN_REDIRECT_URI,
+  LINKEDIN_CLIENT_ID: process.env.LINKEDIN_CLIENT_ID?.trim(),
+  LINKEDIN_CLIENT_SECRET: process.env.LINKEDIN_CLIENT_SECRET?.trim(),
+  LINKEDIN_REDIRECT_URI: process.env.LINKEDIN_REDIRECT_URI?.trim(),
+  /** Deep link base after OAuth, e.g. airlinks://auth */
+  MOBILE_DEEP_LINK_SCHEME: (process.env.MOBILE_DEEP_LINK_SCHEME || 'airlinks://auth').trim(),
 
   HEARTBEAT_TIMEOUT_MS: 45000,
   /** TESTING: ~20,000 km — any two U.S. locations (incl. territories). Revert to 152.4 / 609.6 for production. */

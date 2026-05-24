@@ -6,10 +6,14 @@ const {
   exchangeCode,
   verifyToken,
   serveRedirectPage,
+  debugLinkedInConfig,
 } = require('../controllers/linkedinAuth');
 
 // Redirect user to LinkedIn consent screen
 router.get('/linkedin/start', startLinkedInOAuth);
+
+// Non-secret LinkedIn OAuth config (debug)
+router.get('/debug-linkedin', debugLinkedInConfig);
 
 // LinkedIn callback (exchanges code, redirects to HTTPS page that opens airlinks://)
 router.get('/linkedin/callback', handleLinkedInCallback);

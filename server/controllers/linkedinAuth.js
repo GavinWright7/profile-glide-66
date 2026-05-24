@@ -1,4 +1,5 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const userService = require('../services/userService');
 const config = require('../config');
@@ -6,56 +7,102 @@ const { signToken } = require('../utils/jwt');
 
 const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
 const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
+const LINKEDIN_AUTHORIZE_URL = 'https://www.linkedin.com/oauth/v2/authorization';
+const OAUTH_SCOPE = 'openid profile email';
 
-function buildLinkedInAuthorizationUrl(isMobile) {
+function generateState(platform, forceLogin) {
+  const payload = {
+    n: crypto.randomBytes(16).toString('hex'),
+    platform: platform || 'web',
+    forceLogin: !!forceLogin,
+  };
+  return Buffer.from(JSON.stringify(payload)).toString('base64url');
+}
+
+function parseOAuthState(state) {
+  if (!state || typeof state !== 'string') return { platform: 'unknown', forceLogin: false };
+  try {
+    const parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+    return {
+      platform: parsed.platform || 'unknown',
+      forceLogin: !!parsed.forceLogin,
+      nonce: parsed.n,
+    };
+  } catch {
+    return { platform: 'unknown', forceLogin: false, raw: state };
+  }
+}
+
+function buildLinkedInAuthorizationUrl({ isMobile, forceLogin }) {
+  const platform = isMobile ? 'mobile' : 'web';
+  const state = generateState(platform, forceLogin);
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: config.LINKEDIN_CLIENT_ID,
     redirect_uri: config.LINKEDIN_REDIRECT_URI,
-    scope: 'openid profile email',
-    state: generateState(),
+    scope: OAUTH_SCOPE,
+    state,
   });
 
-
-  // Native / in-app browser: Microsoft recommends this for extended login options on mobile.
+  // Optional: extended login for native in-app browsers (LinkedIn documented).
   if (isMobile) {
     params.set('enable_extended_login', 'true');
   }
 
-  return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
+  return {
+    url: `${LINKEDIN_AUTHORIZE_URL}?${params.toString()}`,
+    state,
+    platform,
+  };
+}
+
+function buildMobileDeepLink(params) {
+  const base = config.MOBILE_DEEP_LINK_SCHEME || 'airlinks://auth';
+  const target = new URL(base);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v != null && String(v).length > 0) target.searchParams.set(k, String(v));
+  });
+  return target.toString();
 }
 
 function startLinkedInOAuth(req, res) {
   const forceLogin = req.query.force_login === '1';
   const isMobile = req.query.platform === 'mobile';
-
-  const linkedInAuthUrl = buildLinkedInAuthorizationUrl(isMobile);
-
-  if (forceLogin) {
-    // Send people to LinkedIn's real sign-in page first, then continue to OAuth via
-    // session_redirect. LinkedIn does not document prompt=login / oauth/v2/logout
-    // reliably; /uas/login is the standard credential form.
-    const loginUrl = new URL('https://www.linkedin.com/uas/login');
-    loginUrl.searchParams.set('session_redirect', linkedInAuthUrl);
-    loginUrl.searchParams.set('fromSignIn', 'true');
-    console.log('[auth] LinkedIn OAuth via uas/login (force login)', {
-      redirect_uri: config.LINKEDIN_REDIRECT_URI,
-      isMobile,
-    });
-    return res.redirect(loginUrl.toString());
-  }
-
-  console.log('[auth] LinkedIn OAuth direct authorization', {
-    redirect_uri: config.LINKEDIN_REDIRECT_URI,
+  const { url: linkedInAuthUrl, state, platform } = buildLinkedInAuthorizationUrl({
     isMobile,
+    forceLogin,
   });
+
+  console.log('[auth] LinkedIn OAuth start', {
+    platform,
+    forceLogin,
+    client_id: config.LINKEDIN_CLIENT_ID,
+    redirect_uri: config.LINKEDIN_REDIRECT_URI,
+    response_type: 'code',
+    scope: OAUTH_SCOPE,
+    state,
+    authorization_url: linkedInAuthUrl,
+  });
+
+  // Always redirect directly to /oauth/v2/authorization.
+  // The uas/login?session_redirect= wrapper breaks in iOS in-app browsers (LinkedIn "Bummer" error).
   res.redirect(linkedInAuthUrl);
+}
+
+function debugLinkedInConfig(_req, res) {
+  res.json({
+    hasClientId: Boolean(config.LINKEDIN_CLIENT_ID),
+    hasClientSecret: Boolean(config.LINKEDIN_CLIENT_SECRET),
+    redirectUri: config.LINKEDIN_REDIRECT_URI || null,
+    mobileDeepLinkScheme: config.MOBILE_DEEP_LINK_SCHEME || null,
+  });
 }
 
 /**
  * Build the HTTPS redirect page URL safely. SFSafariViewController cannot handle
  * 302 redirects to custom URL schemes (airlinks://), so we redirect to an HTTPS
- * page that then opens airlinks:// via JavaScript.
+ * page that then opens the mobile deep link via JavaScript.
  */
 function buildRedirectPageUrl(params) {
   const base = config.LINKEDIN_REDIRECT_URI.replace(/\/auth\/linkedin\/callback\/?(\?.*)?$/i, '');
@@ -67,12 +114,27 @@ function buildRedirectPageUrl(params) {
 }
 
 async function handleLinkedInCallback(req, res) {
-  const { code, error, error_description } = req.query;
-  console.log('[auth] LinkedIn callback received', { hasCode: !!code, hasError: !!error });
+  const { code, error, error_description, state } = req.query;
+  const stateInfo = parseOAuthState(typeof state === 'string' ? state : '');
+
+  console.log('[auth] LinkedIn callback received', {
+    hasCode: !!code,
+    hasError: !!error,
+    error,
+    error_description,
+    state,
+    platform: stateInfo.platform,
+    forceLogin: stateInfo.forceLogin,
+  });
 
   if (error) {
     const errMsg = (error_description || error || 'unknown_error').toString().trim();
-    console.error('[auth] LinkedIn OAuth error:', error, error_description);
+    console.error('[auth] LinkedIn OAuth error:', {
+      error,
+      error_description,
+      state,
+      platform: stateInfo.platform,
+    });
     const redirectUrl = buildRedirectPageUrl({ error: errMsg });
     console.log('[auth] redirect (error path) ->', redirectUrl);
     return res.redirect(redirectUrl);
@@ -244,14 +306,9 @@ async function verifyToken(req, res) {
   }
 }
 
-function generateState() {
-  return Math.random().toString(36).substring(2, 15);
-}
-
 /**
- * Serves an HTTPS page that redirects to airlinks://auth.
+ * Serves an HTTPS page that redirects to the mobile deep link (airlinks://auth?token=…).
  * Required because SFSafariViewController cannot handle 302 redirects to custom URL schemes.
- * Builds the custom URL using URLSearchParams for safe encoding.
  */
 function serveRedirectPage(req, res) {
   const token = typeof req.query.token === 'string' ? req.query.token.trim() : '';
@@ -264,13 +321,10 @@ function serveRedirectPage(req, res) {
     return res.status(400).send('Missing token or error parameter');
   }
 
-  // Build airlinks://auth URL using URLSearchParams (handles encoding)
-  const target = new URL('airlinks://auth');
-  if (hasToken) target.searchParams.set('token', token);
-  else target.searchParams.set('error', error);
-  const deepLink = target.toString();
+  const deepLink = buildMobileDeepLink(hasToken ? { token } : { error });
   console.log('[auth] serving redirect page, final URL:', deepLink.replace(/token=[^&]+/, 'token=***'));
 
+  const deepLinkBase = config.MOBILE_DEEP_LINK_SCHEME || 'airlinks://auth';
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -286,7 +340,7 @@ function serveRedirectPage(req, res) {
       var params = new URLSearchParams(window.location.search);
       var token = params.get('token') || '';
       var err = params.get('error') || '';
-      var target = new URL('airlinks://auth');
+      var target = new URL(${JSON.stringify(deepLinkBase)});
       if (token) target.searchParams.set('token', token);
       else if (err) target.searchParams.set('error', err);
       else return;
@@ -302,4 +356,12 @@ function serveRedirectPage(req, res) {
   res.send(html);
 }
 
-module.exports = { startLinkedInOAuth, handleLinkedInCallback, exchangeCode, verifyToken, serveRedirectPage };
+module.exports = {
+  startLinkedInOAuth,
+  handleLinkedInCallback,
+  exchangeCode,
+  verifyToken,
+  serveRedirectPage,
+  debugLinkedInConfig,
+  buildLinkedInAuthorizationUrl,
+};

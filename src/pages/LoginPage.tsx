@@ -1,35 +1,67 @@
 import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Linkedin, Wifi } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { isDevResetAvailable, resetDevState } from '@/utils/devReset';
 
 const ENABLE_APPLE_TESTER = import.meta.env.VITE_ENABLE_APPLE_TESTER === 'true';
 const TAP_WINDOW_MS = 600;
+const DEV_RESET_TAPS = 3;
+const APPLE_TESTER_TAPS = 5;
 
 const LoginPage = () => {
   const { loginWithLinkedIn, loginAsAppleTester } = useAuth();
-  const tapCountRef = useRef(0);
-  const lastTapRef = useRef(0);
+  const devTapCountRef = useRef(0);
+  const devLastTapRef = useRef(0);
+  const appleTapCountRef = useRef(0);
+  const appleLastTapRef = useRef(0);
 
   const handleLogin = () => {
     void loginWithLinkedIn();
   };
 
   const handleLogoTap = () => {
-    if (!ENABLE_APPLE_TESTER) return;
     const now = Date.now();
-    if (now - lastTapRef.current > TAP_WINDOW_MS) {
-      tapCountRef.current = 0;
-    }
-    lastTapRef.current = now;
-    tapCountRef.current += 1;
-    if (tapCountRef.current >= 5) {
-      tapCountRef.current = 0;
-      loginAsAppleTester();
-      toast.success('Review mode', { duration: 1500 });
-    }
+
+    void (async () => {
+      const devResetAllowed = await isDevResetAvailable();
+      if (devResetAllowed) {
+        if (now - devLastTapRef.current > TAP_WINDOW_MS) {
+          devTapCountRef.current = 0;
+        }
+        devLastTapRef.current = now;
+        devTapCountRef.current += 1;
+
+        if (devTapCountRef.current >= DEV_RESET_TAPS) {
+          devTapCountRef.current = 0;
+          await resetDevState();
+          toast.success('Dev reset — fresh install', { duration: 2000 });
+          if (Capacitor.isNativePlatform()) {
+            window.location.replace('/login');
+          } else {
+            window.location.reload();
+          }
+          return;
+        }
+      }
+
+      if (!ENABLE_APPLE_TESTER) return;
+
+      if (now - appleLastTapRef.current > TAP_WINDOW_MS) {
+        appleTapCountRef.current = 0;
+      }
+      appleLastTapRef.current = now;
+      appleTapCountRef.current += 1;
+
+      if (appleTapCountRef.current >= APPLE_TESTER_TAPS) {
+        appleTapCountRef.current = 0;
+        loginAsAppleTester();
+        toast.success('Review mode', { duration: 1500 });
+      }
+    })();
   };
 
   return (

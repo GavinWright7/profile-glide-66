@@ -14,7 +14,10 @@ try {
 }
 
 async function bootstrap() {
-  await runDevelopmentResetIfNeeded();
+  const didReset = await runDevelopmentResetIfNeeded();
+  if (didReset) {
+    console.log('[DEV RESET] Cold start complete — showing login');
+  }
   await configureNativeChrome();
   createRoot(document.getElementById("root")!).render(<App />);
 }
