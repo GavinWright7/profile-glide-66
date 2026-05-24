@@ -107,9 +107,6 @@ async function updateProfessionalBackground(req, res) {
   const company = String(currentCompany ?? '').trim();
   const alma = String(almaMater ?? '').trim();
   const gradRaw = graduationYear != null ? String(graduationYear).trim() : '';
-  const past = Array.isArray(pastCompanies)
-    ? pastCompanies.map((s) => String(s ?? '').trim()).filter(Boolean)
-    : [];
 
   if (!jobTitle || !alma) {
     return res.status(400).json({
@@ -117,17 +114,24 @@ async function updateProfessionalBackground(req, res) {
     });
   }
 
-  if (!gradRaw || !/^\d{4}$/.test(gradRaw)) {
-    return res.status(400).json({
-      error: 'Graduation year must be a 4-digit year (e.g. 2026)',
-    });
+  if (gradRaw) {
+    if (!/^\d{4}$/.test(gradRaw)) {
+      return res.status(400).json({
+        error: 'Graduation year must be a 4-digit year (e.g. 2026) or omitted',
+      });
+    }
+    const gradNum = parseInt(gradRaw, 10);
+    if (gradNum < 1950 || gradNum > 2100) {
+      return res.status(400).json({
+        error: 'Graduation year must be between 1950 and 2100',
+      });
+    }
   }
-  const gradNum = parseInt(gradRaw, 10);
-  if (gradNum < 1950 || gradNum > 2100) {
-    return res.status(400).json({
-      error: 'Graduation year must be between 1950 and 2100',
-    });
-  }
+
+  const past = Array.isArray(pastCompanies)
+    ? pastCompanies.map((s) => String(s ?? '').trim()).filter(Boolean)
+    : [];
+  const gradValue = gradRaw || null;
 
   try {
     const updatedRow = await userService.updateProfessionalBackground(user.id, {
@@ -135,7 +139,7 @@ async function updateProfessionalBackground(req, res) {
       currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
-      graduationYear: gradRaw,
+      graduationYear: gradValue,
     });
     if (!updatedRow) {
       console.error('[profile] professional background: no profile row updated for subject', user.id);
@@ -164,7 +168,7 @@ async function updateProfessionalBackground(req, res) {
               currentCompany: company || null,
               almaMater: alma,
               pastCompanies: past,
-              graduationYear: gradRaw,
+              graduationYear: gradValue,
             })
           ),
       career: user.career ?? '',
@@ -172,7 +176,7 @@ async function updateProfessionalBackground(req, res) {
       currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
-      graduationYear: gradRaw,
+      graduationYear: gradValue ?? '',
     };
 
     const token = signToken({ userId: user.id, user: updatedUser });
@@ -356,6 +360,9 @@ async function patchMe(req, res) {
     }
 
     if (bio !== undefined || career !== undefined) {
+      if (bio !== undefined) {
+        console.log('[Profile] saving bio', { userId: user.id, length: String(bio).length });
+      }
       try {
         await userService.updateProfileMePatch(user.id, { bio, career });
       } catch (err) {
@@ -365,6 +372,13 @@ async function patchMe(req, res) {
           });
         }
         throw err;
+      }
+      if (bio !== undefined) {
+        const row = await userService.getProfileByLinkedInId(user.id);
+        console.log('[Profile] saved bio result', {
+          userId: user.id,
+          storedLength: row?.bio != null ? String(row.bio).length : 0,
+        });
       }
     }
 

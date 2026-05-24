@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { App } from '@capacitor/app';
 import { Linkedin, UserRound, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -23,9 +24,13 @@ type NearbyApiUser = {
 
 function toNearbyUser(u: NearbyApiUser): NearbyUser {
   const parts = u.headline?.split(' at ') ?? [];
+  const name =
+    u.fullName?.trim() ||
+    parts[0]?.trim() ||
+    'Nearby professional';
   return {
     id: u.userId,
-    name: u.fullName || 'Unknown',
+    name,
     headline: u.headline || '',
     company: parts[1]?.trim() ?? '',
     jobTitle: parts[0]?.trim() ?? '',
@@ -77,6 +82,15 @@ const RadarPage = () => {
     void fetchNearby();
     const id = window.setInterval(() => void fetchNearby(), POLL_MS);
     return () => clearInterval(id);
+  }, [fetchNearby]);
+
+  useEffect(() => {
+    const handle = App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void fetchNearby();
+    });
+    return () => {
+      void handle.then((h) => h.remove());
+    };
   }, [fetchNearby]);
 
   const getInitials = (name: string) =>
@@ -132,39 +146,41 @@ const RadarPage = () => {
                     <p className="text-xs text-muted-foreground mt-1">{feet} ft away</p>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2">
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
-                    className="flex-1 min-w-[100px]"
-                    onClick={() => {
-                      addSavedProfile(u);
-                      toast.success(`Saved ${u.name}`, { duration: 2500 });
-                    }}
-                  >
-                    Save
-                  </Button>
-                  {hasLi ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="flex-1 min-w-[100px] gap-1"
-                      onClick={() => window.open(u.linkedinProfileUrl, '_blank')}
-                    >
-                      <Linkedin className="w-4 h-4" />
-                      Connect on LinkedIn
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="flex-1 min-w-[100px]"
+                    className="w-full"
                     onClick={() => setModalUser(u)}
                   >
                     View Profile
                   </Button>
+                  <div className={`grid gap-2 ${hasLi ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="w-full min-w-0"
+                      onClick={() => {
+                        addSavedProfile(u);
+                        toast.success(`Saved ${u.name}`, { duration: 2500 });
+                      }}
+                    >
+                      Save
+                    </Button>
+                    {hasLi ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="w-full min-w-0 gap-1 px-2"
+                        onClick={() => window.open(u.linkedinProfileUrl, '_blank')}
+                      >
+                        <Linkedin className="w-4 h-4 shrink-0" />
+                        <span className="truncate">Connect</span>
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             );

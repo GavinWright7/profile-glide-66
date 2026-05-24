@@ -78,7 +78,7 @@ async function getProfilesByUserIds(linkedinSubjectIds) {
   if (!linkedinSubjectIds || linkedinSubjectIds.length === 0) return [];
   const placeholders = linkedinSubjectIds.map((_, i) => `$${i + 1}`).join(',');
   const res = await db.query(
-    `SELECT u.linkedin_subject_id, u.id AS user_uuid, p.user_id, p.full_name, p.first_name,
+    `SELECT u.linkedin_subject_id, u.id AS user_uuid, p.user_id, p.full_name, p.first_name, p.last_name,
             p.headline, p.photo_url, p.linkedin_url, p.interests, p.bio, p.career,
             p.current_job_title, p.current_company, p.alma_mater, p.past_companies, p.graduation_year
      FROM profiles p

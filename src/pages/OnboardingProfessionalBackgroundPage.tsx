@@ -51,9 +51,11 @@ const OnboardingProfessionalBackgroundPage = () => {
     setPastCompanies((prev) => prev.filter((c) => c !== company));
   };
 
-  const gradYearOk = /^\d{4}$/.test(graduationYear.trim());
-  const gradNum = gradYearOk ? parseInt(graduationYear.trim(), 10) : NaN;
-  const gradInRange = gradNum >= 1950 && gradNum <= 2100;
+  const gradTrim = graduationYear.trim();
+  const gradYearProvided = gradTrim.length > 0;
+  const gradYearOk = !gradYearProvided || /^\d{4}$/.test(gradTrim);
+  const gradNum = gradYearProvided ? parseInt(gradTrim, 10) : NaN;
+  const gradInRange = !gradYearProvided || (gradNum >= 1950 && gradNum <= 2100);
 
   const canContinue =
     currentJobTitle.trim() && almaMater.trim() && gradYearOk && gradInRange;
@@ -71,8 +73,8 @@ const OnboardingProfessionalBackgroundPage = () => {
         gradInRange,
         graduationYearLen: graduationYear.trim().length,
       });
-      if (!gradYearOk || !gradInRange) {
-        setError('Enter a 4-digit graduation year between 1950 and 2100 (e.g. 2026).');
+      if (gradYearProvided && (!gradYearOk || !gradInRange)) {
+        setError('Graduation year must be a 4-digit year between 1950 and 2100 (e.g. 2026), or leave blank.');
       } else {
         setError('Please fill in job title and alma mater.');
       }
@@ -99,7 +101,7 @@ const OnboardingProfessionalBackgroundPage = () => {
         currentJobTitle: currentJobTitle.trim(),
         currentCompany: currentCompany.trim() || null,
         almaMater: almaMater.trim(),
-        graduationYear: graduationYear.trim(),
+        graduationYear: gradTrim || null,
         pastCompanies,
       });
 
@@ -172,9 +174,7 @@ const OnboardingProfessionalBackgroundPage = () => {
     }
   };
 
-  const gradYearInvalid =
-    submitAttempted && graduationYear.trim().length > 0 && (!gradYearOk || !gradInRange);
-  const gradYearMissing = submitAttempted && graduationYear.trim().length === 0;
+  const gradYearInvalid = submitAttempted && gradYearProvided && (!gradYearOk || !gradInRange);
 
   return (
     <div
@@ -247,22 +247,21 @@ const OnboardingProfessionalBackgroundPage = () => {
 
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Graduation year <span className="text-destructive">*</span>
+              Graduation year <span className="text-muted-foreground/70">(optional)</span>
             </label>
             <Input
               type="text"
               inputMode="numeric"
-              pattern="[0-9]*"
               enterKeyHint="done"
               placeholder="2026"
               value={graduationYear}
-              onChange={(e) => setGraduationYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className={`font-medium ${gradYearInvalid || gradYearMissing ? 'border-destructive ring-1 ring-destructive/50' : ''}`}
+              onChange={(e) => setGraduationYear(e.target.value)}
+              className={`font-medium ${gradYearInvalid ? 'border-destructive ring-1 ring-destructive/50' : ''}`}
               disabled={loading}
               autoComplete="off"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              Required. Year you graduated or expect to graduate — used in your profile bio.
+              Optional. If provided, used in your profile bio.
             </p>
           </div>
 
@@ -335,7 +334,7 @@ const OnboardingProfessionalBackgroundPage = () => {
           </Button>
           {!canContinue && !loading && (
             <p className="text-[11px] text-muted-foreground text-center">
-              Fill all required fields above, including a 4-digit graduation year.
+              Fill in job title and alma mater to continue.
             </p>
           )}
         </form>

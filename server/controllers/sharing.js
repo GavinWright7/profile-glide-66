@@ -43,6 +43,50 @@ function parseCoord(val) {
   return isNaN(n) ? null : n;
 }
 
+/** Prefer Neon full_name, then first_name + last_name. */
+function displayNameFromRow(row) {
+  if (!row) return '';
+  const full = String(row.full_name ?? row.fullName ?? '').trim();
+  if (full) return full;
+  const first = String(row.first_name ?? row.firstName ?? '').trim();
+  const last = String(row.last_name ?? row.lastName ?? '').trim();
+  return `${first} ${last}`.trim();
+}
+
+function profileFromNeonRow(row) {
+  if (!row) return null;
+  const fullName = displayNameFromRow(row);
+  return {
+    fullName,
+    headline: row.headline || '',
+    photoUrl: row.photo_url || '',
+    linkedinUrl: row.linkedin_url || '',
+    interests: row.interests || [],
+    bio: userService.bioForProfileRow(row),
+    career: row.career || '',
+    userUuid: row.user_uuid || null,
+    isPremium: false,
+  };
+}
+
+function mergeCachedWithNeon(cached, neonRow) {
+  const neon = profileFromNeonRow(neonRow);
+  if (!neon) return cached || null;
+  if (!cached) return neon;
+  const neonName = neon.fullName;
+  return {
+    ...cached,
+    fullName: neonName || cached.fullName || cached.full_name || '',
+    headline: neon.headline || cached.headline || '',
+    photoUrl: neon.photoUrl || cached.photoUrl || cached.photo_url || '',
+    linkedinUrl: neon.linkedinUrl || cached.linkedinUrl || cached.linkedin_url || '',
+    bio: neon.bio || cached.bio || '',
+    career: neon.career || cached.career || '',
+    interests: (cached.interests?.length ? cached.interests : neon.interests) || [],
+    userUuid: neon.userUuid || cached.userUuid || null,
+  };
+}
+
 /**
  * POST /sharing/start
  * Body: { latitude, longitude }
@@ -69,8 +113,9 @@ async function startSharing(req, res) {
       ]);
       const r = redis.getRedis();
       if (profile) {
+        const fullName = displayNameFromRow(profile);
         await cacheUserProfile(r, userId, {
-          fullName: profile.full_name,
+          fullName,
           headline: profile.headline,
           photoUrl: profile.photo_url,
           linkedinUrl: profile.linkedin_url,
@@ -136,6 +181,10 @@ async function keepalive(req, res) {
   const userId = req.userId;
   try {
     await redis.redisRefreshTtl(userId);
+    console.log('[Presence] heartbeat TTL refreshed', {
+      userId,
+      ttlSeconds: config.REDIS_SESSION_TTL,
+    });
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
     console.error('[sharing] keepalive error:', err.message);
@@ -243,63 +292,53 @@ async function getNearby(req, res) {
       return res.json({ users: [], count: 0 });
     }
 
+    console.log('[Nearby] hydrating user ids', nearbyUserIds);
+
     const cachedProfiles = await Promise.all(nearbyUserIds.map((id) => getCachedProfile(r, id)));
-    const missedIds = nearbyUserIds.filter((id, idx) => cachedProfiles[idx] == null);
-    const missedProfiles = missedIds.length > 0
-      ? await userService.getProfilesByUserIds(missedIds).catch(() => [])
-      : [];
-    const fallbackByUserId = Object.fromEntries(
-      missedProfiles.map((p) => [p.linkedin_subject_id, p])
+    const neonProfiles = await userService.getProfilesByUserIds(nearbyUserIds).catch((err) => {
+      console.warn('[Nearby] Neon hydration failed:', err.message);
+      return [];
+    });
+    const neonByUserId = Object.fromEntries(
+      neonProfiles.map((p) => [p.linkedin_subject_id, p])
     );
-    const missingIdsWithoutProfiles = missedIds.filter((id) => !fallbackByUserId[id]);
-    if (missingIdsWithoutProfiles.length > 0) {
-      const emptyProfile = {
-        fullName: '',
-        headline: '',
-        photoUrl: '',
-        linkedinUrl: '',
-        interests: [],
-        bio: '',
-        career: '',
-        userUuid: null,
-        isPremium: false,
-      };
-      await Promise.all(
-        missingIdsWithoutProfiles.map((id) =>
-          cacheUserProfile(r, id, emptyProfile, EMPTY_PROFILE_CACHE_TTL)
-        )
-      );
-    }
+
     const profileByUserId = Object.fromEntries(
       nearbyUserIds.map((id, idx) => {
-        const cached = cachedProfiles[idx];
-        if (cached) return [id, cached];
-        const fallback = fallbackByUserId[id];
-        if (!fallback) {
-          return [
-            id,
-            {
-              fullName: '',
-              headline: '',
-              photoUrl: '',
-              linkedinUrl: '',
-              interests: [],
-              bio: '',
-              career: '',
-              userUuid: null,
-            },
-          ];
+        const merged = mergeCachedWithNeon(cachedProfiles[idx], neonByUserId[id]);
+        if (merged) return [id, merged];
+        console.warn('[Nearby] missing name fallback', { userId: id });
+        return [
+          id,
+          {
+            fullName: '',
+            headline: '',
+            photoUrl: '',
+            linkedinUrl: '',
+            interests: [],
+            bio: '',
+            career: '',
+            userUuid: null,
+          },
+        ];
+      })
+    );
+
+    // Refresh Redis cache when Neon has a name but cache was empty/stale
+    await Promise.all(
+      nearbyUserIds.map(async (id) => {
+        const profile = profileByUserId[id];
+        const neonName = displayNameFromRow(neonByUserId[id]);
+        const cachedName = String(profile?.fullName ?? '').trim();
+        if (neonName && neonName !== cachedName) {
+          try {
+            await cacheUserProfile(r, id, { ...profile, fullName: neonName });
+          } catch {}
+        } else if (!cachedProfiles[nearbyUserIds.indexOf(id)] && profile?.fullName) {
+          try {
+            await cacheUserProfile(r, id, profile);
+          } catch {}
         }
-        return [id, {
-          fullName: fallback.full_name,
-          headline: fallback.headline,
-          photoUrl: fallback.photo_url,
-          linkedinUrl: fallback.linkedin_url,
-          interests: fallback.interests || [],
-          bio: userService.bioForProfileRow(fallback),
-          career: fallback.career || '',
-          userUuid: fallback.user_uuid || null,
-        }];
       })
     );
     const myInterests = cachedRequesterProfile?.interests || [];
@@ -312,9 +351,17 @@ async function getNearby(req, res) {
         const relevanceScore = computeRelevanceScore(myInterests, interests);
         const headline = profile?.headline || '';
         const jobTitle = headline.split(' at ')[0]?.trim() || '';
+        let fullName = String(profile?.fullName || profile?.full_name || '').trim();
+        if (!fullName) {
+          const neonRow = neonByUserId[id];
+          fullName = displayNameFromRow(neonRow);
+          if (!fullName) {
+            console.warn('[Nearby] missing name fallback', { userId: id, hasNeonRow: !!neonRow });
+          }
+        }
         const u = {
           userId: id,
-          fullName: profile?.fullName || profile?.full_name || '',
+          fullName,
           headline,
           jobTitle,
           photoUrl: profile?.photoUrl || profile?.photo_url || '',

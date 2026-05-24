@@ -50,10 +50,8 @@ export interface NearbyShareUser {
   photoUrl:       string;
   linkedinUrl:    string;
   distanceMeters: number;
-  bio?:           string;
-  interests?:     string[];
-  /** Public profile from Neon (nearby API) */
   bio?: string;
+  interests?: string[];
   career?: string;
   relevanceScore?: number;
   /** Coordinates for directional arrow (from Redis GEO). */
@@ -183,10 +181,12 @@ function initLifecycleListener() {
       addLog('lifecycle: foreground — resuming normal discovery');
       stopBackgroundWatch();
       startForegroundIntervals();
-      void doNearbyPoll(); // immediate UI refresh
+      void doHeartbeat();
+      void doNearbyPoll();
     } else {
       // ── Entering background ───────────────────────────────────────────────
       clearForegroundIntervals();
+      void sendKeepalive('lifecycle: background');
       if (state.backgroundSharingEnabled) {
         addLog('lifecycle: backgrounded — continuing via watchPosition (UIBackgroundModes: location)');
         void startBackgroundWatch();
@@ -356,6 +356,22 @@ export function setFindPersonActive(active: boolean) {
 }
 
 // ── Heartbeat + Poll ─────────────────────────────────────────────────────────
+
+async function sendKeepalive(reason: string): Promise<void> {
+  if (!state.isSharing || !hasNonDemoSessionReady()) return;
+  try {
+    const res = await apiPost('/sharing/heartbeat/keepalive', {});
+    if (res.ok) {
+      _lastHeartbeatTime = Date.now();
+      setState({ lastHeartbeatAt: new Date() });
+      addLog(`${reason}: keepalive ✓`);
+    } else {
+      addLog(`${reason}: keepalive server ${res.status}`);
+    }
+  } catch (err) {
+    addLog(`${reason}: keepalive error ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 async function doHeartbeat() {
   if (!state.isSharing) return;
