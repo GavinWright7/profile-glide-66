@@ -1,4 +1,6 @@
 import { createRoot } from "react-dom/client";
+import { runDevelopmentResetIfNeeded } from "./utils/devReset";
+import { configureNativeChrome } from "./utils/nativeChrome";
 import App from "./App.tsx";
 import "./index.css";
 
@@ -11,4 +13,10 @@ try {
   /* ignore */
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+async function bootstrap() {
+  await runDevelopmentResetIfNeeded();
+  await configureNativeChrome();
+  createRoot(document.getElementById("root")!).render(<App />);
+}
+
+void bootstrap();

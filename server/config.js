@@ -10,17 +10,32 @@ if (process.env.NODE_ENV !== 'production') {
 
 const PLACEHOLDER_PATTERNS = /^YOUR_|_HERE$|^change-this/i;
 
-function requireEnv(keys) {
-  const invalid = keys.filter((key) => {
+function missingEnvKeys(keys) {
+  return keys.filter((key) => {
     const val = process.env[key];
     return !val || PLACEHOLDER_PATTERNS.test(val);
   });
+}
+
+function requireEnv(keys) {
+  const invalid = missingEnvKeys(keys);
 
   if (invalid.length) {
     const msg = `FATAL: Missing required environment variables: ${invalid.join(', ')}. Set these in Railway → Variables.`;
     console.error('\n❌', msg);
     process.exit(1);
   }
+}
+
+/** Log missing env at startup without exiting — server can still bind PORT and serve /health. */
+function warnEnv(keys) {
+  const invalid = missingEnvKeys(keys);
+  if (invalid.length) {
+    console.warn(
+      `[startup] Missing or placeholder env vars (some routes may fail): ${invalid.join(', ')}`
+    );
+  }
+  return invalid;
 }
 
 module.exports = {
@@ -43,4 +58,6 @@ module.exports = {
   REDIS_SESSION_TTL: 120,
 
   requireEnv,
+  warnEnv,
+  missingEnvKeys,
 };

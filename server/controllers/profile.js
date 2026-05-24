@@ -4,6 +4,11 @@ const { signToken } = require('../utils/jwt');
 const { INTEREST_OPTIONS } = require('../constants/interests');
 const { getSubcategoriesForIndustry } = require('../constants/subcategories');
 const interestService = require('../services/interestService');
+const {
+  resolveDisplayBio,
+  bioProfileFromRow,
+  bioProfileFromUser,
+} = require('../utils/bioTemplate');
 
 const MAX_BIO_LEN = 800;
 
@@ -125,15 +130,44 @@ async function updateProfessionalBackground(req, res) {
   }
 
   try {
-    await userService.updateProfessionalBackground(user.id, {
+    const updatedRow = await userService.updateProfessionalBackground(user.id, {
       currentJobTitle: jobTitle,
       currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
       graduationYear: gradRaw,
     });
+    if (!updatedRow) {
+      console.error('[profile] professional background: no profile row updated for subject', user.id);
+      return res.status(500).json({ error: 'Could not save professional background (profile missing)' });
+    }
+
+    // Plain object: avoids rare spread/toJSON quirks; always include camelCase fields the app expects.
     const updatedUser = {
-      ...user,
+      id: user.id,
+      name: user.name ?? '',
+      firstName: user.firstName ?? '',
+      lastName: user.lastName ?? '',
+      email: user.email ?? '',
+      picture: user.picture ?? '',
+      headline: user.headline ?? '',
+      linkedinUrl: user.linkedinUrl ?? '',
+      interests: Array.isArray(user.interests) ? user.interests : [],
+      goals: Array.isArray(user.goals) ? user.goals : [],
+      bio: updatedRow
+        ? userService.bioForProfileRow(updatedRow)
+        : resolveDisplayBio(
+            user.bio ?? '',
+            bioProfileFromUser({
+              firstName: user.firstName,
+              currentJobTitle: jobTitle,
+              currentCompany: company || null,
+              almaMater: alma,
+              pastCompanies: past,
+              graduationYear: gradRaw,
+            })
+          ),
+      career: user.career ?? '',
       currentJobTitle: jobTitle,
       currentCompany: company || null,
       almaMater: alma,
@@ -143,7 +177,10 @@ async function updateProfessionalBackground(req, res) {
 
     const token = signToken({ userId: user.id, user: updatedUser });
 
-    console.log('[profile] professional background updated for', user.id);
+    console.log('[profile] professional background updated for', user.id, {
+      graduationYear: updatedUser.graduationYear,
+      responseUserKeys: Object.keys(updatedUser),
+    });
     res.json({ token, user: updatedUser });
   } catch (err) {
     console.error('[profile] updateProfessionalBackground error:', err.message);
@@ -198,17 +235,33 @@ async function getProfile(req, res) {
     const linkedinUrl = stored?.linkedin_url ?? user.linkedinUrl ?? '';
     const currentJobTitle = stored?.current_job_title ?? user.currentJobTitle ?? null;
     const currentCompany = stored?.current_company ?? user.currentCompany ?? null;
-    const almaMater = stored?.alma_mater ?? user.almaMater ?? null;
+    const almaMater =
+      stored?.alma_mater != null && String(stored.alma_mater).trim() !== ''
+        ? String(stored.alma_mater).trim()
+        : user.almaMater != null && String(user.almaMater).trim() !== ''
+          ? String(user.almaMater).trim()
+          : null;
     const pastCompanies = stored?.past_companies ?? user.pastCompanies ?? [];
     const graduationYear =
       stored?.graduation_year != null && String(stored.graduation_year).trim() !== ''
         ? String(stored.graduation_year).trim()
         : user.graduationYear ?? '';
-    const bio =
+    const storedBio =
       stored?.bio != null && String(stored.bio).trim() !== ''
         ? String(stored.bio).trim()
         : user.bio ?? '';
     const career = stored?.career ?? user.career ?? '';
+    const bio = resolveDisplayBio(
+      storedBio,
+      bioProfileFromRow(stored, {
+        ...user,
+        currentJobTitle,
+        currentCompany,
+        almaMater,
+        pastCompanies,
+        graduationYear,
+      })
+    );
     const merged = {
       ...user,
       linkedinUrl,

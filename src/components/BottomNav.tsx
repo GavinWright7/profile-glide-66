@@ -18,13 +18,18 @@ const BottomNav = () => {
   const sharing = useSharing();
 
   if (location.pathname === '/login') return null;
+  if (location.pathname.startsWith('/onboarding')) return null;
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 glass-surface border-t border-border/50"
-      style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
+      className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/50 bg-background/95 backdrop-blur-xl"
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
+      }}
     >
-      <div className="flex justify-around items-center h-12 max-w-md mx-auto px-2">
+      <div className="flex justify-around items-center h-12 max-w-md mx-auto px-2 pt-2">
         {tabs.map((tab) => {
           const isActive = location.pathname === tab.path;
           const showBadge = tab.showBadgeWhenSharing && sharing.isSharing && !isActive;

@@ -81,7 +81,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <ConnectionsProvider>
-          <div className="flex flex-col min-h-[100dvh] min-h-[100vh] app-viewport">
+          <div className="app-shell">
             <SwipeableTabs>
               <Routes>
             <Route

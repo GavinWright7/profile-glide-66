@@ -23,10 +23,13 @@ function presenceKeyGenerator(req) {
   return key;
 }
 
+const skipOptions = (req) => req.method === 'OPTIONS';
+
 const presenceRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
   keyGenerator: presenceKeyGenerator,
+  skip: skipOptions,
   message: { error: 'Too many presence updates. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -36,6 +39,7 @@ const nearbyRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 40,
   keyGenerator: (req) => req.userId || req.ip,
+  skip: skipOptions,
   message: { error: 'Too many nearby requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { motion } from 'framer-motion';
 import { Briefcase, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,18 @@ import { Input } from '@/components/ui/input';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiPut } from '../api/client';
-import { saveSession } from '../auth/authService';
+import { saveSession, BACKEND_URL, type AuthUser } from '../auth/authService';
+import { isValidLinkedInUrl } from '../utils/linkedinUrl';
+
+const DIAG = '[AirLinks][ProfessionalOnboarding]';
+
+function apiHostname(): string {
+  try {
+    return new URL(BACKEND_URL).hostname || '(no-host)';
+  } catch {
+    return '(bad-BACKEND_URL)';
+  }
+}
 
 /**
  * Onboarding step: Professional Background (job title, company, alma mater, past companies).
@@ -25,6 +37,7 @@ const OnboardingProfessionalBackgroundPage = () => {
   const [newPastCompany, setNewPastCompany] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const addPastCompany = () => {
     const trimmed = newPastCompany.trim();
@@ -48,18 +61,39 @@ const OnboardingProfessionalBackgroundPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitAttempted(true);
 
     if (!canContinue) {
-      setError('Please fill in job title, alma mater, and a valid 4-digit graduation year.');
+      console.warn(`${DIAG} Continue blocked: client validation`, {
+        jobTitleLen: currentJobTitle.trim().length,
+        almaMaterLen: almaMater.trim().length,
+        gradYearOk,
+        gradInRange,
+        graduationYearLen: graduationYear.trim().length,
+      });
+      if (!gradYearOk || !gradInRange) {
+        setError('Enter a 4-digit graduation year between 1950 and 2100 (e.g. 2026).');
+      } else {
+        setError('Please fill in job title and alma mater.');
+      }
       return;
     }
 
     if (!token) {
+      console.error(`${DIAG} Continue blocked: no auth token in memory`);
       setError('Session expired. Please sign in again.');
       return;
     }
 
     setLoading(true);
+    console.log(`${DIAG} PUT /profile/professional-background`, {
+      apiHost: apiHostname(),
+      hasToken: true,
+      jobTitleLen: currentJobTitle.trim().length,
+      almaMaterLen: almaMater.trim().length,
+      graduationYear: graduationYear.trim(),
+      pastCompaniesCount: pastCompanies.length,
+    });
     try {
       const res = await apiPut('/profile/professional-background', {
         currentJobTitle: currentJobTitle.trim(),
@@ -69,30 +103,89 @@ const OnboardingProfessionalBackgroundPage = () => {
         pastCompanies,
       });
 
-      const data = await res.json();
+      let data: { error?: string; token?: string; user?: Record<string, unknown> };
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        console.error(`${DIAG} response was not JSON`, { status: res.status, statusText: res.statusText });
+        throw new Error('Server returned a non-JSON response (check API URL and server logs).');
+      }
 
       if (!res.ok) {
+        console.error(`${DIAG} API error`, {
+          httpStatus: res.status,
+          error: data?.error ?? '(no error field)',
+        });
         throw new Error(data.error || 'Failed to save');
       }
 
       const { token: newToken, user: updatedUser } = data;
-      saveSession({ token: newToken, user: updatedUser });
-      updateSession({ token: newToken, user: updatedUser });
+      if (!newToken || !updatedUser) {
+        console.error(`${DIAG} success response missing token or user`, {
+          hasToken: !!newToken,
+          hasUser: !!updatedUser,
+          keys: data && typeof data === 'object' ? Object.keys(data) : [],
+        });
+        throw new Error('Server response missing token or user');
+      }
+
+      /** API must return graduationYear; merge from form if an older deploy omits it (see OnboardingGuard). */
+      const gradFromForm = graduationYear.trim();
+      const raw = updatedUser as Record<string, unknown>;
+      const gradFromApi =
+        raw.graduationYear != null && String(raw.graduationYear).trim() !== ''
+          ? String(raw.graduationYear).trim()
+          : '';
+      const gradMerged = gradFromApi || gradFromForm;
+      if (!gradMerged) {
+        console.error(`${DIAG} response missing graduationYear and form empty`);
+        throw new Error('Could not apply graduation year to session');
+      }
+      if (!gradFromApi && gradFromForm) {
+        console.warn(`${DIAG} API user omitted graduationYear; merging from form`, { gradFromForm });
+      }
+
+      const u = { ...raw, graduationYear: gradMerged } as Record<string, unknown>;
+      console.log(`${DIAG} save OK; applying session + navigate /`, {
+        userKeys: Object.keys(u),
+        hasLinkedinUrl: typeof u.linkedinUrl === 'string' && u.linkedinUrl.length > 0,
+        linkedinUrlValid:
+          typeof u.linkedinUrl === 'string' ? isValidLinkedInUrl(u.linkedinUrl) : false,
+        hasJobTitle: typeof u.currentJobTitle === 'string' && u.currentJobTitle.trim().length > 0,
+        hasAlmaMater: typeof u.almaMater === 'string' && u.almaMater.trim().length > 0,
+        graduationYear: u.graduationYear,
+      });
+
+      const asUser = { ...(updatedUser as unknown as AuthUser), graduationYear: gradMerged };
+      saveSession({ token: newToken, user: asUser });
+      // Ensure AuthContext sees the new user before OnboardingGuard runs on `/`.
+      flushSync(() => {
+        updateSession({ token: newToken, user: asUser });
+      });
+      console.log(`${DIAG} router.navigate('/') replace`);
       navigate('/', { replace: true });
     } catch (err) {
+      console.error(`${DIAG} failed`, err instanceof Error ? err.message : err);
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setLoading(false);
     }
   };
 
+  const gradYearInvalid =
+    submitAttempted && graduationYear.trim().length > 0 && (!gradYearOk || !gradInRange);
+  const gradYearMissing = submitAttempted && graduationYear.trim().length === 0;
+
   return (
     <div
-      className="flex-1 min-h-0 flex flex-col items-center justify-center px-[var(--page-padding-x)] pb-20"
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="flex-1 min-h-0 flex flex-col w-full overflow-y-auto overscroll-contain px-[var(--page-padding-x)] py-6"
+      style={{
+        paddingTop: 'max(1.5rem, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(6rem, env(safe-area-inset-bottom, 0px))',
+      }}
     >
       <motion.div
-        className="w-full max-w-sm"
+        className="w-full max-w-sm mx-auto shrink-0"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -159,15 +252,17 @@ const OnboardingProfessionalBackgroundPage = () => {
             <Input
               type="text"
               inputMode="numeric"
-              placeholder="e.g. 2026 — year you graduated or expect to graduate"
+              pattern="[0-9]*"
+              enterKeyHint="done"
+              placeholder="2026"
               value={graduationYear}
               onChange={(e) => setGraduationYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="font-medium"
+              className={`font-medium ${gradYearInvalid || gradYearMissing ? 'border-destructive ring-1 ring-destructive/50' : ''}`}
               disabled={loading}
               autoComplete="off"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              Used to describe your school experience in your profile bio.
+              Required. Year you graduated or expect to graduate — used in your profile bio.
             </p>
           </div>
 
@@ -234,10 +329,15 @@ const OnboardingProfessionalBackgroundPage = () => {
           <Button
             type="submit"
             className="w-full"
-            disabled={loading || !canContinue}
+            disabled={loading}
           >
             {loading ? 'Saving…' : 'Continue'}
           </Button>
+          {!canContinue && !loading && (
+            <p className="text-[11px] text-muted-foreground text-center">
+              Fill all required fields above, including a 4-digit graduation year.
+            </p>
+          )}
         </form>
       </motion.div>
     </div>

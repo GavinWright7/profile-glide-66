@@ -71,6 +71,13 @@ export const LINKEDIN_AUTH_URL = `${BACKEND_URL}/auth/linkedin/start`;
 /** Use after logout to force LinkedIn to show login form (no auto-login). */
 export const LINKEDIN_AUTH_URL_FORCE_LOGIN = `${BACKEND_URL}/auth/linkedin/start?force_login=1`;
 
+/** True if a non-demo JWT is present and not expired (client-side exp only). */
+export function hasNonDemoSessionReady(): boolean {
+  const token = getStoredToken();
+  if (!token || isDemoToken(token)) return false;
+  return !isTokenExpired(token);
+}
+
 /** Custom event dispatched when session is invalid — AuthProvider listens and logs out */
 export const AUTH_401_EVENT = 'auth:401';
 

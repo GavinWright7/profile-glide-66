@@ -73,7 +73,7 @@ export async function apiRequest(
   const token = skipAuth ? null : getValidToken();
 
   if (!skipAuth && !token) {
-    authLog('apiRequest: no valid token, skipping request');
+    console.debug('[Auth] apiRequest skipped: no valid token', path);
     return new Response(JSON.stringify({ error: 'No token' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },

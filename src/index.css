@@ -83,27 +83,75 @@
     @apply border-border;
   }
   html {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
     -webkit-text-size-adjust: 100%;
+    background-color: hsl(var(--background));
   }
   body {
     @apply bg-background text-foreground antialiased;
+    width: 100%;
+    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: 100svh;
+    min-height: -webkit-fill-available;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overflow-x: hidden;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    padding-left: env(safe-area-inset-left, 0px);
-    padding-right: env(safe-area-inset-right, 0px);
   }
+  #root {
+    width: 100%;
+    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: 100svh;
+    min-height: -webkit-fill-available;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: hsl(var(--background));
+  }
+}
+
+/* Full-screen app shell (Capacitor / mobile) */
+.app-shell {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  min-height: 100dvh;
+  min-height: 100svh;
+  min-height: -webkit-fill-available;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: hsl(var(--background));
 }
 
 /* Page layout: device-aware header spacing */
 .page-with-header {
   padding-top: calc(var(--page-padding-top) + env(safe-area-inset-top, 0px));
   padding-bottom: var(--nav-bottom-pad);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
-/* Full viewport height for mobile — 100dvh accounts for dynamic browser chrome */
-.app-viewport {
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
-  height: 100%;
+/* Tab content area — dark fill behind status bar */
+.tab-page-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  background-color: hsl(var(--background));
 }
 
 @layer utilities {

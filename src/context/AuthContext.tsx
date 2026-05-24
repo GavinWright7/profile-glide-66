@@ -24,6 +24,7 @@ import {
   BACKEND_URL,
 } from '../auth/authService';
 import { SESSION_EXPIRED_MESSAGE } from '../api/client';
+import { forceHaltSharingLoops } from '../utils/sharing';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -176,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const detail = (e as CustomEvent<{ message?: string }>)?.detail;
       const message = detail?.message ?? SESSION_EXPIRED_MESSAGE;
       authLog('logout triggered by 401/expired');
+      forceHaltSharingLoops();
       void (async () => {
         await clearSession();
       })();
@@ -269,6 +271,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authLog('logout');
+    forceHaltSharingLoops();
     try {
       sessionStorage.setItem(LOGGED_OUT_FLAG, '1');
     } catch {

@@ -24,13 +24,13 @@ const exactCoords = new Map();
 
 async function cacheUserProfile(r, userId, profile, ttl = PROFILE_CACHE_TTL) {
   try {
-    await r.setex(`pg:profile:${userId}`, ttl, JSON.stringify(profile));
+    await redis.withTimeout(r.setex(`pg:profile:${userId}`, ttl, JSON.stringify(profile)));
   } catch {}
 }
 
 async function getCachedProfile(r, userId) {
   try {
-    const raw = await r.get(`pg:profile:${userId}`);
+    const raw = await redis.withTimeout(r.get(`pg:profile:${userId}`));
     if (raw != null) return JSON.parse(raw);
     return null;
   } catch {
@@ -75,7 +75,7 @@ async function startSharing(req, res) {
           photoUrl: profile.photo_url,
           linkedinUrl: profile.linkedin_url,
           interests: profile.interests || [],
-          bio: profile.bio || '',
+          bio: userService.bioForProfileRow(profile),
           career: profile.career || '',
           userUuid: profile.user_uuid || null,
           isPremium,
@@ -99,7 +99,8 @@ async function startSharing(req, res) {
     })();
   } catch (err) {
     console.error('[sharing] start error:', err.message);
-    res.status(500).json({ error: 'Failed to start sharing' });
+    const isTimeout = /timed out/i.test(err.message);
+    res.status(isTimeout ? 503 : 500).json({ error: err.message || 'Failed to start sharing' });
   }
 }
 
@@ -126,7 +127,8 @@ async function heartbeat(req, res) {
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
     console.error('[sharing] heartbeat error:', err.message);
-    res.status(500).json({ error: 'Failed to update heartbeat' });
+    const isTimeout = /timed out/i.test(err.message);
+    res.status(isTimeout ? 503 : 500).json({ error: err.message || 'Failed to update heartbeat' });
   }
 }
 
@@ -137,7 +139,8 @@ async function keepalive(req, res) {
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
     console.error('[sharing] keepalive error:', err.message);
-    res.status(500).json({ error: 'Failed to refresh session' });
+    const isTimeout = /timed out/i.test(err.message);
+    res.status(isTimeout ? 503 : 500).json({ error: err.message || 'Failed to refresh session' });
   }
 }
 
@@ -155,7 +158,8 @@ async function stopSharing(req, res) {
     res.json({ success: true });
   } catch (err) {
     console.error('[sharing] stop error:', err.message);
-    res.status(500).json({ error: 'Failed to stop sharing' });
+    const isTimeout = /timed out/i.test(err.message);
+    res.status(isTimeout ? 503 : 500).json({ error: err.message || 'Failed to stop sharing' });
   }
 }
 
@@ -229,7 +233,9 @@ async function getNearby(req, res) {
 
     const candidates = allEntries.filter(([id]) => id && id !== userId);
     const sessionKeys = candidates.map(([id]) => `${config.REDIS_SESSION_PREFIX}${id}`);
-    const sessionVals = sessionKeys.length > 0 ? await r.mget(...sessionKeys) : [];
+    const sessionVals = sessionKeys.length > 0
+      ? await redis.withTimeout(r.mget(...sessionKeys))
+      : [];
     const entries = candidates.filter((_, idx) => sessionVals[idx] != null);
 
     const nearbyUserIds = entries.map(([id]) => id);
@@ -290,7 +296,7 @@ async function getNearby(req, res) {
           photoUrl: fallback.photo_url,
           linkedinUrl: fallback.linkedin_url,
           interests: fallback.interests || [],
-          bio: fallback.bio || '',
+          bio: userService.bioForProfileRow(fallback),
           career: fallback.career || '',
           userUuid: fallback.user_uuid || null,
         }];
@@ -358,7 +364,11 @@ async function getNearby(req, res) {
     res.json({ users, count: users.length });
   } catch (err) {
     console.error('[sharing] nearby error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch nearby users' });
+    const isTimeout = /timed out/i.test(err.message);
+    const isRedis = /redis/i.test(err.message);
+    res.status(isTimeout || isRedis ? 503 : 500).json({
+      error: err.message || 'Failed to fetch nearby users',
+    });
   }
 }
 
@@ -368,10 +378,10 @@ async function getNearby(req, res) {
 async function debugSessions(req, res) {
   try {
     const r = redis.getRedis();
-    const geo = await r.zrange(config.REDIS_GEO_KEY, 0, -1, 'WITHSCORES');
+    const geo = await redis.withTimeout(r.zrange(config.REDIS_GEO_KEY, 0, -1, 'WITHSCORES'));
     res.json({ geoKeys: geo?.length || 0, note: 'Redis GEO keys (user ids)' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(503).json({ error: err.message });
   }
 }
 

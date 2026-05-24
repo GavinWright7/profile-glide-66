@@ -24,7 +24,7 @@
 import { Geolocation }  from '@capacitor/geolocation';
 import { App }          from '@capacitor/app';
 import { Capacitor }    from '@capacitor/core';
-import { APPLE_TESTER_USER_ID, AUTH_401_EVENT } from '../auth/authService';
+import { APPLE_TESTER_USER_ID, AUTH_401_EVENT, hasNonDemoSessionReady } from '../auth/authService';
 import type { AuthUser } from '../auth/authService';
 import { apiPost, apiGet } from '../api/client';
 
@@ -159,11 +159,11 @@ function initLifecycleListener() {
   if (_lifecycleInitialized) return;
   _lifecycleInitialized = true;
 
-  // Stop sharing when session expires (401) — prevents stale heartbeat loops
+  // Stop sharing when session expires (401) — tear down timers without calling API
   window.addEventListener(AUTH_401_EVENT, () => {
     if (state.isSharing) {
-      addLog('auth expired — stopping sharing');
-      void stopSharing();
+      addLog('auth expired — halting sharing');
+      forceHaltSharingLoops();
     }
   });
 
@@ -175,6 +175,11 @@ function initLifecycleListener() {
 
     if (isActive) {
       // ── Returning to foreground ───────────────────────────────────────────
+      if (state.isSharing && !hasNonDemoSessionReady()) {
+        addLog('lifecycle: foreground — session invalid, halting sharing');
+        forceHaltSharingLoops();
+        return;
+      }
       addLog('lifecycle: foreground — resuming normal discovery');
       stopBackgroundWatch();
       startForegroundIntervals();
@@ -353,6 +358,12 @@ export function setFindPersonActive(active: boolean) {
 // ── Heartbeat + Poll ─────────────────────────────────────────────────────────
 
 async function doHeartbeat() {
+  if (!state.isSharing) return;
+  if (!hasNonDemoSessionReady()) {
+    addLog('heartbeat: no session — halting');
+    forceHaltSharingLoops();
+    return;
+  }
   const loc = await getPosition(true);
   if (!loc) { addLog('heartbeat: no location — skipping'); return; }
   const isStationary = _lastSentLocation ? metersBetween(_lastSentLocation, loc) < 2 : false;
@@ -385,6 +396,11 @@ async function doHeartbeat() {
 
 async function doNearbyPoll() {
   if (_findPersonActive) return;
+  if (!state.isSharing) return;
+  if (!hasNonDemoSessionReady()) {
+    forceHaltSharingLoops();
+    return;
+  }
   const loc = _location;
   if (!loc) return;
   const params: Record<string, string> = {
@@ -437,6 +453,28 @@ function clearSharingPersistence() {
   } catch { /* ignore */ }
 }
 
+/**
+ * Tear down sharing timers, geolocation watches, and persisted sharing keys.
+ * Does not call the backend (safe when token is already gone).
+ */
+export function forceHaltSharingLoops(): void {
+  _isStarting = false;
+  clearForegroundIntervals();
+  stopBackgroundWatch();
+  stopForegroundWatch();
+  clearSharingPersistence();
+  setState({
+    isSharing: false,
+    nearbyUsers: [],
+    lastHeartbeatAt: null,
+    heartbeatIntervalMs: HEARTBEAT_FG_MS,
+  });
+  _location = null;
+  _lastSentLocation = null;
+  _lastHeartbeatTime = 0;
+  _autoResumeAttempted = false;
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export function getSharingState(): SharingState {
@@ -474,6 +512,7 @@ export function setBackgroundSharingEnabled(enabled: boolean) {
  */
 export async function tryAutoResume(user: AuthUser, token: string): Promise<void> {
   if (user.id === APPLE_TESTER_USER_ID) return;
+  if (!hasNonDemoSessionReady()) return;
   if (_autoResumeAttempted || state.isSharing) return;
   _autoResumeAttempted = true;
   try {
@@ -510,6 +549,11 @@ export async function startSharing(user: AuthUser, token: string): Promise<void>
 
   if (user.id === APPLE_TESTER_USER_ID) {
     startDemoSharing();
+    return;
+  }
+
+  if (!hasNonDemoSessionReady()) {
+    addLog('startSharing: no valid session');
     return;
   }
 
@@ -613,27 +657,21 @@ export async function startSharing(user: AuthUser, token: string): Promise<void>
 }
 
 /**
- * Stop sharing: clears all timers, notifies backend, wipes persisted state.
+ * Stop sharing: halts timers, notifies backend when a JWT is still valid.
  */
 export async function stopSharing(): Promise<void> {
   addLog('stopSharing called');
-  _isStarting = false;
-  clearForegroundIntervals();
-  stopBackgroundWatch();
-  stopForegroundWatch();
-  clearSharingPersistence();
-  setState({
-    isSharing:      false,
-    nearbyUsers:    [],
-    lastHeartbeatAt: null,
-    heartbeatIntervalMs: HEARTBEAT_FG_MS,
-  });
+  const notifyBackend = hasNonDemoSessionReady();
+  forceHaltSharingLoops();
 
-  // Notify backend (api client gets token from storage; no-op if already logged out)
-  apiPost('/sharing/stop', {}).catch((err) => {
-    addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
-  });
-  _location = null;
-  _lastSentLocation = null;
+  if (notifyBackend) {
+    try {
+      const res = await apiPost('/sharing/stop', {});
+      if (!res.ok) addLog(`stopSharing: server ${res.status}`);
+    } catch (err) {
+      addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   addLog('stopSharing: done');
 }

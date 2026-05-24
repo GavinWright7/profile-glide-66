@@ -7,6 +7,10 @@ const config = require('../config');
  * Logs reason for 401 (without leaking secrets) for debugging.
  */
 function requireAuth(req, res, next) {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     console.log('[auth] 401: no token provided');

@@ -11,14 +11,28 @@ const {
   debugSessions,
 } = require('../controllers/sharing');
 
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch((err) => {
+      console.error('[sharing] route error:', err.message);
+      if (!res.headersSent) {
+        const isTimeout = /timed out/i.test(err.message);
+        res.status(isTimeout ? 503 : 500).json({
+          error: err.message || 'Sharing service unavailable',
+        });
+      }
+    });
+  };
+}
+
 // All sharing routes require a valid JWT
-router.post('/start', requireAuth, presenceRateLimiter, startSharing);
-router.post('/heartbeat', requireAuth, presenceRateLimiter, heartbeat);
-router.post('/heartbeat/keepalive', requireAuth, presenceRateLimiter, keepalive);
-router.post('/stop', requireAuth, presenceRateLimiter, stopSharing);
-router.get('/nearby', requireAuth, nearbyRateLimiter, getNearby);
+router.post('/start', requireAuth, presenceRateLimiter, asyncHandler(startSharing));
+router.post('/heartbeat', requireAuth, presenceRateLimiter, asyncHandler(heartbeat));
+router.post('/heartbeat/keepalive', requireAuth, presenceRateLimiter, asyncHandler(keepalive));
+router.post('/stop', requireAuth, presenceRateLimiter, asyncHandler(stopSharing));
+router.get('/nearby', requireAuth, nearbyRateLimiter, asyncHandler(getNearby));
 
 // Dev-only — shows in-memory session state (remove before production)
-router.get('/debug', debugSessions);
+router.get('/debug', asyncHandler(debugSessions));
 
 module.exports = router;
