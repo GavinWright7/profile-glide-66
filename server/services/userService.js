@@ -284,6 +284,8 @@ async function updateIsDiscoverable(linkedinSubjectId, isDiscoverable) {
     [linkedinSubjectId, !!isDiscoverable]
   );
 }
+
+async function listSavedProfilesForSaver(saverLinkedinSubjectId) {
   const res = await db.query(
     `SELECT sp.id, sp.target_linkedin_subject_id, sp.created_at,
             p.full_name, p.headline, p.photo_url, p.linkedin_url, p.bio, p.career
