@@ -213,16 +213,46 @@ function initLifecycleListener() {
 
 // ── Discoverable persistence ─────────────────────────────────────────────────
 
-async function persistDiscoverablePreference(isDiscoverable: boolean): Promise<void> {
-  if (!hasNonDemoSessionReady()) return;
-  try {
-    const res = await apiPatch('/profile/discoverable', { isDiscoverable });
-    if (!res.ok) {
-      addLog(`discoverable: server ${res.status} saving preference`);
-    }
-  } catch (err) {
-    addLog(`discoverable: save error ${err instanceof Error ? err.message : String(err)}`);
+export type SharingToggleResult = {
+  ok: boolean;
+  error?: string;
+  user?: AuthUser;
+  token?: string;
+};
+
+function userFacingSharingError(status: number, body?: { error?: string }): string {
+  if (status === 429) {
+    return 'Please wait a moment before trying again.';
   }
+  const msg = body?.error?.trim();
+  if (
+    msg &&
+    !/backend|network|socket|broadcast|presence|session|redis|timeout|fetch/i.test(msg)
+  ) {
+    return msg;
+  }
+  if (status >= 500) return 'Something went wrong. Please try again.';
+  return 'Unable to update discoverability. Please try again.';
+}
+
+async function persistDiscoverablePreference(
+  isDiscoverable: boolean
+): Promise<{ user: AuthUser; token: string } | null> {
+  if (!hasNonDemoSessionReady()) return null;
+  const res = await apiPatch('/profile/discoverable', { isDiscoverable });
+  const body = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    user?: AuthUser;
+    token?: string;
+  };
+  if (!res.ok) {
+    throw new Error(userFacingSharingError(res.status, body));
+  }
+  if (body.user && body.token) {
+    setCachedDiscoverablePreference(isDiscoverable, body.user, body.token);
+    return { user: body.user, token: body.token };
+  }
+  return null;
 }
 
 export function setCachedDiscoverablePreference(isDiscoverable: boolean, user?: AuthUser | null, token?: string | null) {
@@ -617,74 +647,53 @@ export async function startSharing(
   user: AuthUser,
   token: string,
   options: { skipPersist?: boolean } = {}
-): Promise<void> {
-  if (_isStarting) { addLog('startSharing: already starting'); return; }
-  if (state.isSharing) { addLog('startSharing: already sharing'); return; }
+): Promise<SharingToggleResult> {
+  if (_isStarting) { addLog('startSharing: already starting'); return { ok: false, error: 'Please wait…' }; }
+  if (state.isSharing) { addLog('startSharing: already sharing'); return { ok: true }; }
 
   if (user.id === APPLE_TESTER_USER_ID) {
     startDemoSharing();
-    return;
+    return { ok: true };
   }
 
   if (!hasNonDemoSessionReady()) {
     addLog('startSharing: no valid session');
-    return;
+    return { ok: false, error: 'Please sign in again.' };
   }
 
   _isStarting = true;
   setState({ error: null });
-  initLifecycleListener();   // safe to call multiple times — no-op after first
+  initLifecycleListener();
 
   try {
-    // ── 1. Location permission ────────────────────────────────────────────────
     addLog('startSharing: checking location permission');
     let perm = await checkPermission();
     setState({ locationPermission: perm });
 
     if (perm !== 'granted') {
-      addLog('startSharing: requesting location permission');
       const ok = await requestPermission();
       if (!ok) {
-        setState({ error: 'Location permission required.' });
-        addLog('startSharing: permission denied — aborting');
-        return;
+        setState({ error: 'Location access is required to go discoverable.' });
+        return { ok: false, error: 'Location access is required to go discoverable.' };
       }
-      perm = 'granted';
     }
-    addLog('startSharing: location permission ✓');
 
-    // Optimistic UI: show Discoverable immediately while we fetch location + register
-    setState({ isSharing: true });
-
-    // ── 2. Initial position (low accuracy = fast, uses cell/wifi) ─────────────
-    addLog('startSharing: getting current location');
     const loc = await getPosition(false);
     if (!loc) {
-      setState({ error: 'Could not get current location.', isSharing: false });
-      return;
+      const msg = 'Could not determine your location. Please try again.';
+      setState({ error: msg, isSharing: false });
+      return { ok: false, error: msg };
     }
-    addLog(`startSharing: location ✓  ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
-
-    // ── 3. Register with backend (uses centralized api client, token from storage) ───
-    const startBody = { latitude: loc.lat, longitude: loc.lng };
-
-    addLog('startSharing: registering with backend');
 
     let res: Response;
     try {
-      res = await apiPost('/sharing/start', startBody);
+      res = await apiPost('/sharing/start', { latitude: loc.lat, longitude: loc.lng });
     } catch (fetchErr) {
-      const err = fetchErr as Error & { cause?: unknown };
-      const detail = [
-        err.message,
-        err.name && err.name !== 'Error' ? `(${err.name})` : '',
-        err.cause ? `cause: ${String(err.cause)}` : '',
-      ].filter(Boolean).join(' ');
-      const msg = `Network error: ${detail || 'request failed'}. Check backend URL and connectivity.`;
-      addLog(`startSharing FAILED: ${msg}`);
+      addLog(`startSharing FAILED: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`);
       console.error('[Sharing] fetch error:', fetchErr);
+      const msg = 'Unable to connect. Check your internet and try again.';
       setState({ error: msg, isSharing: false });
-      return;
+      return { ok: false, error: msg };
     }
 
     const status = res.status;
@@ -698,39 +707,41 @@ export async function startSharing(
 
     if (!res.ok) {
       const body = resBody as { error?: string };
-      const msg = `Backend error ${status}: ${body?.error ?? 'unknown'}`;
+      const msg = userFacingSharingError(status, body);
       setState({ error: msg, isSharing: false });
-      addLog(msg);
-      return;
+      addLog(`startSharing FAILED: ${status}`);
+      return { ok: false, error: msg };
     }
-    addLog('startSharing: registered ✓');
 
-    // ── 4. Persist + start loops ──────────────────────────────────────────────
     persistSession(user, token);
     _resumeUser = user;
     _resumeToken = token;
     _cachedDiscoverable = true;
-    if (!options.skipPersist) {
-      void persistDiscoverablePreference(true);
-    }
     _lastHeartbeatTime = Date.now();
-    setState({ isSharing: true, lastHeartbeatAt: new Date() });
+    setState({ isSharing: true, lastHeartbeatAt: new Date(), error: null });
 
     startForegroundIntervals();
-    void doNearbyPoll();   // populate radar immediately, don't wait 5 s
+    void doNearbyPoll();
 
-    addLog('startSharing: active ✓  (backgrounding will continue via watchPosition)');
+    let sessionUpdate: { user: AuthUser; token: string } | null = null;
+    if (!options.skipPersist) {
+      sessionUpdate = await persistDiscoverablePreference(true);
+    }
 
+    addLog('startSharing: active ✓');
+    return {
+      ok: true,
+      user: sessionUpdate?.user,
+      token: sessionUpdate?.token,
+    };
   } catch (err) {
-    const e = err as Error & { cause?: unknown };
-    const msg = e.message || String(err);
-    const detail = e.cause ? ` (${String(e.cause)})` : '';
-    const full = `startSharing failed: ${msg}${detail}`;
-    addLog(`startSharing FAILED: ${full}`);
+    const msg = err instanceof Error ? err.message : 'Unable to go discoverable.';
+    addLog(`startSharing FAILED: ${msg}`);
     console.error('[Sharing] startSharing error:', err);
-    setState({ error: full, isSharing: false });
+    setState({ error: msg, isSharing: false });
     clearForegroundIntervals();
     clearSharingPersistence();
+    return { ok: false, error: msg };
   } finally {
     _isStarting = false;
   }
@@ -739,21 +750,39 @@ export async function startSharing(
 /**
  * Stop sharing: halts timers, notifies backend when a JWT is still valid.
  */
-export async function stopSharing(): Promise<void> {
+export async function stopSharing(): Promise<SharingToggleResult> {
   addLog('stopSharing called');
   const notifyBackend = hasNonDemoSessionReady();
-  forceHaltSharingLoops();
-  _cachedDiscoverable = false;
 
-  if (notifyBackend) {
-    void persistDiscoverablePreference(false);
-    try {
+  try {
+    let sessionUpdate: { user: AuthUser; token: string } | null = null;
+
+    if (notifyBackend) {
       const res = await apiPost('/sharing/stop', {});
-      if (!res.ok) addLog(`stopSharing: server ${res.status}`);
-    } catch (err) {
-      addLog(`stopSharing backend error: ${err instanceof Error ? err.message : String(err)}`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        const msg = userFacingSharingError(res.status, body);
+        throw new Error(msg);
+      }
+      sessionUpdate = await persistDiscoverablePreference(false);
     }
-  }
 
-  addLog('stopSharing: done');
+    forceHaltSharingLoops();
+    _cachedDiscoverable = false;
+    setState({ error: null });
+
+    addLog('stopSharing: done');
+    return {
+      ok: true,
+      user: sessionUpdate?.user,
+      token: sessionUpdate?.token,
+    };
+  } catch (err) {
+    forceHaltSharingLoops();
+    _cachedDiscoverable = false;
+    const msg = err instanceof Error ? err.message : 'Unable to stop sharing.';
+    setState({ error: msg, isSharing: false });
+    addLog(`stopSharing FAILED: ${msg}`);
+    return { ok: false, error: msg };
+  }
 }

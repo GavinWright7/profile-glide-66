@@ -16,6 +16,16 @@ const SavedProfilesPage = () => {
     (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
   );
 
+  const handleRemove = async (saved: (typeof sorted)[number]) => {
+    const name = saved.user.name;
+    try {
+      await removeSavedProfile(saved);
+      toast.success(`Removed ${name}`, { duration: 2500 });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove profile');
+    }
+  };
+
   const openLinkedin = async (url: string) => {
     if (!isValidLinkedInUrl(url)) {
       toast.message('LinkedIn link not available.', { duration: 2500 });
@@ -91,7 +101,7 @@ const SavedProfilesPage = () => {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-destructive shrink-0"
-                  onClick={() => void removeSavedProfile(saved)}
+                  onClick={() => void handleRemove(saved)}
                   title="Remove"
                 >
                   <Trash2 size={16} />

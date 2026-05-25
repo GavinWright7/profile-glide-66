@@ -45,4 +45,16 @@ const nearbyRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { presenceRateLimiter, nearbyRateLimiter };
+const discoverableRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => req.userId || req.ip,
+  skip: skipOptions,
+  message: {
+    error: 'Please wait a moment before changing discoverability again.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+module.exports = { presenceRateLimiter, nearbyRateLimiter, discoverableRateLimiter };

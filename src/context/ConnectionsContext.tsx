@@ -248,10 +248,20 @@ export function ConnectionsProvider({ children }: { children: ReactNode }) {
         setSavedProfiles((prev) => prev.filter((s) => s.id !== entry.id));
         return;
       }
-      await apiRequest(`/saved-profiles/${encodeURIComponent(entry.targetUserId)}`, {
-        method: 'DELETE',
-      });
-      await refreshSavedProfiles();
+      setSavedProfiles((prev) => prev.filter((s) => s.id !== entry.id));
+      try {
+        const res = await apiRequest(`/saved-profiles/${encodeURIComponent(entry.targetUserId)}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          await refreshSavedProfiles();
+          throw new Error(data.error || 'Failed to remove saved profile');
+        }
+      } catch (err) {
+        await refreshSavedProfiles();
+        throw err;
+      }
     },
     [isDemoUser, refreshSavedProfiles]
   );

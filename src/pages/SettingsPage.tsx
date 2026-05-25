@@ -1,10 +1,8 @@
 import { motion } from 'framer-motion';
-import { Shield, Eye, Linkedin, LogOut, ChevronRight } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
-import { useState, useEffect } from 'react';
+import { Eye, Linkedin, LogOut, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useSharing } from '../hooks/useSharing';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
@@ -12,8 +10,6 @@ import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
 
 const SettingsPage = () => {
-  const sharing = useSharing();
-  const [discoverable, setDiscoverable] = useState(sharing.isSharing);
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [linkedinError, setLinkedinError] = useState<string | null>(null);
   const [linkedinSaving, setLinkedinSaving] = useState(false);
@@ -21,29 +17,6 @@ const SettingsPage = () => {
   const { user, token, updateSession, logout } = useAuth();
 
   const displayUrl = linkedinUrl || user?.linkedinUrl || '';
-
-  useEffect(() => {
-    setDiscoverable(sharing.isSharing);
-  }, [sharing.isSharing]);
-
-  const handleDiscoverableChange = async (checked: boolean) => {
-    setDiscoverable(checked);
-    if (checked && user && token) {
-      await sharing.startSharing(user, token);
-    } else {
-      await sharing.stopSharing();
-    }
-  };
-
-  const settingGroups = [
-    {
-      title: 'Privacy',
-      icon: Shield,
-      items: [
-        { label: 'Discoverable by nearby users', value: discoverable, onChange: handleDiscoverableChange },
-      ],
-    },
-  ];
 
   const handleSaveLinkedInUrl = async () => {
     const normalized = validateLinkedInUrl(displayUrl);
@@ -139,25 +112,6 @@ const SettingsPage = () => {
           </div>
         </div>
 
-        {settingGroups.map((group) => (
-          <div key={group.title} className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <group.icon size={16} className="text-muted-foreground" />
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {group.title}
-              </h2>
-            </div>
-            <div className="glass-card divide-y divide-border/50">
-              {group.items.map((item) => (
-                <div key={item.label} className="flex items-center justify-between p-4">
-                  <span className="text-sm text-foreground">{item.label}</span>
-                  <Switch checked={item.value} onCheckedChange={item.onChange} />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-
         <div className="glass-card p-4 flex items-start gap-3 mb-6">
           <Eye size={16} className="text-primary mt-0.5 shrink-0" />
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -166,6 +120,7 @@ const SettingsPage = () => {
         </div>
 
         <button
+          type="button"
           onClick={handleSignOut}
           className="w-full glass-card p-4 flex items-center gap-3 text-destructive hover:bg-destructive/5 transition-colors"
         >

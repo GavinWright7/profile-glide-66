@@ -3,6 +3,10 @@ export type RecentlyViewedProfile = {
   name: string;
   title: string;
   company: string;
+  headline?: string;
+  profilePhotoUrl?: string;
+  linkedinProfileUrl?: string;
+  bio?: string;
   viewedAt: string;
 };
 
@@ -20,12 +24,7 @@ export function loadRecentlyViewed(): RecentlyViewedProfile[] {
   }
 }
 
-export function addRecentlyViewed(entry: {
-  id: string;
-  name: string;
-  title: string;
-  company: string;
-}): RecentlyViewedProfile[] {
+export function addRecentlyViewed(entry: Omit<RecentlyViewedProfile, 'viewedAt'>): RecentlyViewedProfile[] {
   const next: RecentlyViewedProfile = {
     ...entry,
     viewedAt: new Date().toISOString(),

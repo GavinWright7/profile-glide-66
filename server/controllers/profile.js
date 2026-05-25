@@ -306,15 +306,29 @@ async function getMe(req, res) {
  */
 async function patchMe(req, res) {
   const user = req.user;
-  const { bio, career, interests } = req.body;
+  const {
+    bio,
+    career,
+    interests,
+    currentJobTitle,
+    currentCompany,
+    almaMater,
+    graduationYear,
+    pastCompanies,
+  } = req.body;
 
   if (
     bio === undefined &&
     career === undefined &&
-    interests === undefined
+    interests === undefined &&
+    currentJobTitle === undefined &&
+    currentCompany === undefined &&
+    almaMater === undefined &&
+    graduationYear === undefined &&
+    pastCompanies === undefined
   ) {
     return res.status(400).json({
-      error: 'Provide at least one of: bio, career, interests',
+      error: 'Provide at least one field to update',
     });
   }
 
@@ -325,6 +339,60 @@ async function patchMe(req, res) {
     return res.status(400).json({
       error: `Bio must be ${MAX_BIO_LEN} characters or less`,
     });
+  }
+
+  const hasProfessional =
+    currentJobTitle !== undefined ||
+    currentCompany !== undefined ||
+    almaMater !== undefined ||
+    graduationYear !== undefined ||
+    pastCompanies !== undefined;
+
+  if (hasProfessional) {
+    const jobTitle =
+      currentJobTitle !== undefined ? String(currentJobTitle ?? '').trim() : user.currentJobTitle?.trim() || '';
+    const company =
+      currentCompany !== undefined ? String(currentCompany ?? '').trim() : user.currentCompany?.trim() || '';
+    const alma =
+      almaMater !== undefined ? String(almaMater ?? '').trim() : user.almaMater?.trim() || '';
+    const gradRaw = graduationYear != null ? String(graduationYear).trim() : '';
+
+    if (!jobTitle || !alma) {
+      return res.status(400).json({
+        error: 'Job title and alma mater are required',
+      });
+    }
+
+    if (gradRaw) {
+      if (!/^\d{4}$/.test(gradRaw)) {
+        return res.status(400).json({
+          error: 'Graduation year must be a 4-digit year (e.g. 2026) or omitted',
+        });
+      }
+      const gradNum = parseInt(gradRaw, 10);
+      if (gradNum < 1950 || gradNum > 2100) {
+        return res.status(400).json({
+          error: 'Graduation year must be between 1950 and 2100',
+        });
+      }
+    }
+
+    const past = Array.isArray(pastCompanies)
+      ? pastCompanies.map((s) => String(s ?? '').trim()).filter(Boolean)
+      : user.pastCompanies ?? [];
+
+    try {
+      await userService.updateProfessionalBackground(user.id, {
+        currentJobTitle: jobTitle,
+        currentCompany: company || null,
+        almaMater: alma,
+        pastCompanies: past,
+        ...(gradRaw ? { graduationYear: gradRaw } : { graduationYear: null }),
+      });
+    } catch (err) {
+      console.error('[profile] patchMe professional error:', err.message);
+      return res.status(500).json({ error: 'Failed to update professional background' });
+    }
   }
 
   try {

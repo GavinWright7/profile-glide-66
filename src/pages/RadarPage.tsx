@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App } from '@capacitor/app';
-import { Linkedin, UserRound, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DiscoverProfileCard, PROXIMITY_LABEL } from '@/components/DiscoverProfileCard';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { useConnections } from '@/context/ConnectionsContext';
@@ -12,7 +13,6 @@ import { FREE_RADIUS_METERS } from '@/services/entitlementService';
 import { addRecentlyViewed } from '@/utils/recentlyViewed';
 import type { NearbyUser } from '@/data/mockUsers';
 
-const PROXIMITY_LABEL = 'within 500 feet of you';
 const POLL_MS = 10_000;
 
 type NearbyApiUser = {
@@ -53,6 +53,10 @@ function logRecentlyViewed(u: NearbyUser) {
     name: u.name,
     title: u.jobTitle || u.headline.split(' at ')[0]?.trim() || '',
     company: u.company || u.headline.split(' at ')[1]?.trim() || '',
+    headline: u.headline,
+    profilePhotoUrl: u.profilePhotoUrl,
+    linkedinProfileUrl: u.linkedinProfileUrl,
+    bio: u.bio,
   });
 }
 
@@ -168,72 +172,18 @@ const RadarPage = () => {
         )}
 
         <div className="space-y-3">
-          {users.map((u) => {
-            const hasLi = Boolean(u.linkedinProfileUrl?.trim());
-            return (
-              <div
-                key={u.id}
-                className="rounded-xl border border-border bg-card/80 p-4 space-y-3"
-              >
-                <div className="flex gap-3">
-                  {u.profilePhotoUrl ? (
-                    <img
-                      src={u.profilePhotoUrl}
-                      alt=""
-                      className="w-14 h-14 rounded-full object-cover border border-border shrink-0"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center shrink-0">
-                      <UserRound className="w-7 h-7 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-base font-semibold text-foreground truncate">{u.name}</h2>
-                    {u.headline ? (
-                      <p className="text-sm text-muted-foreground truncate">{u.headline}</p>
-                    ) : null}
-                    <p className="text-xs text-muted-foreground mt-1">{PROXIMITY_LABEL}</p>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setModalUser(u)}
-                  >
-                    View Profile
-                  </Button>
-                  <div className={`grid gap-2 ${hasLi ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="w-full min-w-0"
-                      onClick={() => {
-                        addSavedProfile(u);
-                        toast.success(`Saved ${u.name}`, { duration: 2500 });
-                      }}
-                    >
-                      Save
-                    </Button>
-                    {hasLi ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="w-full min-w-0 gap-1 px-2"
-                        onClick={() => openLinkedIn(u)}
-                      >
-                        <Linkedin className="w-4 h-4 shrink-0" />
-                        <span className="truncate">Connect</span>
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {users.map((u) => (
+            <DiscoverProfileCard
+              key={u.id}
+              user={u}
+              onViewProfile={() => setModalUser(u)}
+              onSave={() => {
+                addSavedProfile(u);
+                toast.success(`Saved ${u.name}`, { duration: 2500 });
+              }}
+              onConnect={() => openLinkedIn(u)}
+            />
+          ))}
         </div>
       </div>
 
@@ -291,7 +241,6 @@ const RadarPage = () => {
                   className="w-full gap-2 bg-linkedin hover:bg-linkedin/90 text-linkedin-foreground"
                   onClick={() => openLinkedIn(modalUser)}
                 >
-                  <Linkedin size={18} />
                   Connect on LinkedIn
                 </Button>
               </div>

@@ -1,14 +1,18 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wifi, WifiOff, LogOut } from 'lucide-react';
+import { Loader2, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
 import { setCachedDiscoverablePreference } from '../utils/sharing';
 
+const TOGGLE_DEBOUNCE_MS = 1000;
+
 const HomePage = () => {
-  const { user, token, isAuthReady, logout } = useAuth();
+  const { user, token, isAuthReady, logout, updateSession } = useAuth();
   const sharing = useSharing();
+  const [toggleBusy, setToggleBusy] = useState(false);
+  const lastToggleAt = useRef(0);
 
   useEffect(() => {
     if (isAuthReady && user && token) {
@@ -19,13 +23,30 @@ const HomePage = () => {
     }
   }, [isAuthReady, user, token, sharing.isSharing, sharing.tryAutoResume]);
 
-  const handleToggleSharing = async () => {
-    if (sharing.isSharing) {
-      await sharing.stopSharing();
-    } else if (user && token) {
-      await sharing.startSharing(user, token);
+  const handleToggleSharing = useCallback(async () => {
+    if (!user || !token || toggleBusy) return;
+
+    const now = Date.now();
+    if (now - lastToggleAt.current < TOGGLE_DEBOUNCE_MS) return;
+    lastToggleAt.current = now;
+
+    setToggleBusy(true);
+    try {
+      const result = sharing.isSharing
+        ? await sharing.stopSharing()
+        : await sharing.startSharing(user, token);
+
+      if (result.user && result.token) {
+        updateSession({ token: result.token, user: result.user });
+        setCachedDiscoverablePreference(result.user.isDiscoverable === true, result.user, result.token);
+      }
+    } finally {
+      setToggleBusy(false);
     }
-  };
+  }, [user, token, toggleBusy, sharing, updateSession]);
+
+  const discoverable = sharing.isSharing;
+  const toggleDisabled = toggleBusy || !user || !token;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
@@ -75,14 +96,6 @@ const HomePage = () => {
             )}
           </div>
 
-          {sharing.isSharing && sharing.appLifecycle === 'background' && (
-            <div className="mt-3 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 w-fit">
-              <p className="text-[11px] text-amber-400 font-mono">
-                📍 Background sharing active ({sharing.heartbeatIntervalMs / 1000}s heartbeat)
-              </p>
-            </div>
-          )}
-
           {sharing.error && (
             <div className="mt-3 w-full px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/20">
               <p className="text-xs text-destructive text-center">{sharing.error}</p>
@@ -91,13 +104,20 @@ const HomePage = () => {
 
           <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
             <motion.button
-              className="rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center relative shrink-0"
+              type="button"
+              disabled={toggleDisabled}
+              className="rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center relative shrink-0 disabled:opacity-50"
               style={{ width: 'var(--icon-button-size-home)', height: 'var(--icon-button-size-home)' }}
-              whileTap={{ scale: 0.9, y: 2 }}
+              whileTap={toggleDisabled ? undefined : { scale: 0.9, y: 2 }}
               transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-              onClick={handleToggleSharing}
+              onClick={() => void handleToggleSharing()}
             >
-              {sharing.isSharing && (
+              {toggleBusy && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                </div>
+              )}
+              {!toggleBusy && discoverable && (
                 <>
                   {[0, 1, 2].map((i) => (
                     <motion.div
@@ -115,28 +135,27 @@ const HomePage = () => {
                   ))}
                 </>
               )}
-              {sharing.isSharing ? (
+              {!toggleBusy && (discoverable ? (
                 <Wifi size={64} className="text-primary" />
               ) : (
                 <WifiOff size={64} className="text-primary" />
-              )}
+              ))}
             </motion.button>
 
             <div className="flex flex-col items-center w-full gap-[var(--section-gap)] mt-20 max-w-sm">
               <div className="flex items-center justify-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+                <div className={`w-2 h-2 rounded-full ${discoverable ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
                 <h2 className="text-2xl font-bold text-foreground">
-                  {sharing.isSharing ? 'Discoverable' : 'Not Sharing'}
+                  {discoverable ? 'Discoverable' : 'Not discoverable'}
                 </h2>
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                {sharing.isSharing
-                  ? sharing.appLifecycle === 'background'
-                    ? 'Sharing continues in background'
-                    : 'Broadcasting your profile to people nearby'
-                  : 'Tap to broadcast your profile to nearby people'}
+                {toggleBusy
+                  ? 'Updating…'
+                  : discoverable
+                    ? 'Nearby people can see your profile'
+                    : 'Tap to become discoverable nearby'}
               </p>
-
             </div>
           </div>
         </motion.div>
