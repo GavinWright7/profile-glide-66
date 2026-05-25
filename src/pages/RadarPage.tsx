@@ -138,6 +138,11 @@ const RadarPage = () => {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-padding-x)] pb-24 max-w-md mx-auto w-full">
+        {showDiscoverSpinner && users.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            Nobody nearby detected
+          </p>
+        ) : null}
         <div className="space-y-3">
           {users.map((u) => (
             <DiscoverProfileCard
