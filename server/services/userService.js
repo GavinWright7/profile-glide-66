@@ -211,6 +211,7 @@ function mergeJwtUserWithProfileRow(baseUser, row) {
           row.career != null && String(row.career).trim() !== ''
             ? String(row.career).trim()
             : baseUser.career ?? '',
+        isDiscoverable: row.is_discoverable === true,
       }
     : { ...baseUser };
   delete merged.interests;
@@ -274,7 +275,15 @@ async function updateProfileMePatch(linkedinSubjectId, patch) {
   return getProfileByLinkedInId(linkedinSubjectId);
 }
 
-async function listSavedProfilesForSaver(saverLinkedinSubjectId) {
+async function updateIsDiscoverable(linkedinSubjectId, isDiscoverable) {
+  await db.query(
+    `UPDATE profiles p
+     SET is_discoverable = $2, updated_at = NOW()
+     FROM users u
+     WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
+    [linkedinSubjectId, !!isDiscoverable]
+  );
+}
   const res = await db.query(
     `SELECT sp.id, sp.target_linkedin_subject_id, sp.created_at,
             p.full_name, p.headline, p.photo_url, p.linkedin_url, p.bio, p.career
@@ -325,6 +334,7 @@ module.exports = {
   getMergedUserForAuth,
   bioForProfileRow,
   updateProfileMePatch,
+  updateIsDiscoverable,
   listSavedProfilesForSaver,
   insertSavedProfile,
   deleteSavedProfile,

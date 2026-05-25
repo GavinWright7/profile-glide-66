@@ -408,6 +408,8 @@ async function getNearby(req, res) {
       users.sort((a, b) => a.distanceMeters - b.distanceMeters);
     }
 
+    users = users.filter((u) => String(u.fullName || '').trim().length > 0);
+
     res.json({ users, count: users.length });
   } catch (err) {
     console.error('[sharing] nearby error:', err.message);

@@ -176,7 +176,7 @@ async function updateProfessionalBackground(req, res) {
       currentCompany: company || null,
       almaMater: alma,
       pastCompanies: past,
-      graduationYear: gradValue ?? '',
+      ...(gradValue ? { graduationYear: gradValue } : {}),
     };
 
     const token = signToken({ userId: user.id, user: updatedUser });
@@ -392,12 +392,30 @@ async function patchMe(req, res) {
   }
 }
 
+async function updateDiscoverable(req, res) {
+  const user = req.user;
+  const { isDiscoverable } = req.body;
+  if (typeof isDiscoverable !== 'boolean') {
+    return res.status(400).json({ error: 'isDiscoverable must be a boolean' });
+  }
+  try {
+    await userService.updateIsDiscoverable(user.id, isDiscoverable);
+    const merged = await userService.getMergedUserForAuth(user.id, user);
+    const token = signToken({ userId: user.id, user: merged });
+    res.json({ token, user: merged });
+  } catch (err) {
+    console.error('[profile] updateDiscoverable error:', err.message);
+    res.status(500).json({ error: 'Failed to update discoverable preference' });
+  }
+}
+
 module.exports = {
   updateLinkedInUrl,
   updateInterests,
   getProfile,
   getMe,
   patchMe,
+  updateDiscoverable,
   getInterestsOptions,
   updateProfessionalBackground,
   updateGoals,

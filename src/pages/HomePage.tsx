@@ -4,15 +4,18 @@ import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
+import { setCachedDiscoverablePreference } from '../utils/sharing';
 
 const HomePage = () => {
   const { user, token, isAuthReady, logout } = useAuth();
   const sharing = useSharing();
 
-  // Auto-resume only after auth is validated — prevents 401 from stale/invalid token
   useEffect(() => {
-    if (isAuthReady && user && token && !sharing.isSharing) {
-      void sharing.tryAutoResume(user, token);
+    if (isAuthReady && user && token) {
+      setCachedDiscoverablePreference(user.isDiscoverable === true, user, token);
+      if (user.isDiscoverable && !sharing.isSharing) {
+        void sharing.tryAutoResume(user, token);
+      }
     }
   }, [isAuthReady, user, token, sharing.isSharing, sharing.tryAutoResume]);
 
@@ -32,7 +35,6 @@ const HomePage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          {/* Header: Home + profile — same vertical position as History/Discover titles */}
           <div className="shrink-0">
             <h1 className="text-2xl font-bold text-foreground">Home</h1>
             {user && (
@@ -73,7 +75,6 @@ const HomePage = () => {
             )}
           </div>
 
-          {/* Lifecycle badge — visible when sharing in background */}
           {sharing.isSharing && sharing.appLifecycle === 'background' && (
             <div className="mt-3 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 w-fit">
               <p className="text-[11px] text-amber-400 font-mono">
@@ -82,14 +83,12 @@ const HomePage = () => {
             </div>
           )}
 
-          {/* Error message */}
           {sharing.error && (
             <div className="mt-3 w-full px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/20">
               <p className="text-xs text-destructive text-center">{sharing.error}</p>
             </div>
           )}
 
-          {/* Centered wifi button (40% bigger) + Discoverable section below waves */}
           <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
             <motion.button
               className="rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center relative shrink-0"
@@ -123,7 +122,6 @@ const HomePage = () => {
               )}
             </motion.button>
 
-            {/* Discoverable + text — mt-20 keeps below blue wave range (waves scale to 2.2x) */}
             <div className="flex flex-col items-center w-full gap-[var(--section-gap)] mt-20 max-w-sm">
               <div className="flex items-center justify-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${sharing.isSharing ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />

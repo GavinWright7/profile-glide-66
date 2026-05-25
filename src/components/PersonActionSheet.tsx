@@ -24,6 +24,11 @@ export function PersonActionSheet({
   onSaveProfile,
   onClose,
 }: PersonActionSheetProps) {
+  const name = user.fullName?.trim();
+  if (!name) {
+    console.warn('[Discover] action sheet missing name', { userId: user.userId });
+    return null;
+  }
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-end justify-center"
@@ -48,7 +53,7 @@ export function PersonActionSheet({
       >
         <div className="px-4 pt-4 pb-2">
           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-            {user.fullName || 'Person'}
+            {name}
           </p>
         </div>
         <div className="flex flex-col gap-1 px-4">

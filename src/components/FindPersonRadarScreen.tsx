@@ -236,10 +236,10 @@ export function FindPersonRadarScreen({
         {!isFacing && (
           <>
             <p className="text-sm font-semibold text-foreground mb-1">
-              {target.fullName || 'Unknown'}
+              {target.fullName?.trim() || ''}
             </p>
             <p className="text-xs text-muted-foreground mb-4">
-              {formatDistance(liveDistanceMeters)} away
+              within 500 feet of you
             </p>
           </>
         )}

@@ -17,12 +17,18 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(1)} km`;
+const PROXIMITY_LABEL = 'within 500 feet of you';
+
+function formatDistance(_meters: number): string {
+  return PROXIMITY_LABEL;
 }
 
 export function NearbyUserListCard({ user, onTap }: NearbyUserListCardProps) {
+  const name = user.fullName?.trim();
+  if (!name) {
+    console.warn('[Discover] list card missing name', { userId: user.userId });
+    return null;
+  }
   const headline = user.headline || '';
   const [jobTitle, company] = headline.split(' at ').map((s) => s?.trim() || '');
   const descriptor = company ? `${jobTitle || 'Professional'} at ${company}` : jobTitle || headline || '';
@@ -49,7 +55,7 @@ export function NearbyUserListCard({ user, onTap }: NearbyUserListCardProps) {
       </div>
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-semibold text-foreground truncate">
-          {user.fullName || 'Unknown'}
+          {name}
         </h3>
         {descriptor && (
           <p className="text-xs text-muted-foreground truncate">

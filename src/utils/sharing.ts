@@ -26,7 +26,7 @@ import { App }          from '@capacitor/app';
 import { Capacitor }    from '@capacitor/core';
 import { APPLE_TESTER_USER_ID, AUTH_401_EVENT, hasNonDemoSessionReady } from '../auth/authService';
 import type { AuthUser } from '../auth/authService';
-import { apiPost, apiGet } from '../api/client';
+import { apiPost, apiGet, apiPatch } from '../api/client';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -150,6 +150,9 @@ let _isStarting           = false;
 let _lifecycleInitialized = false;
 let _autoResumeAttempted  = false;
 let _findPersonActive = false;
+let _cachedDiscoverable = false;
+let _resumeUser: AuthUser | null = null;
+let _resumeToken: string | null = null;
 
 // ── App lifecycle listener ───────────────────────────────────────────────────
 
@@ -168,6 +171,10 @@ function initLifecycleListener() {
   App.addListener('appStateChange', ({ isActive }) => {
     const lifecycle: SharingState['appLifecycle'] = isActive ? 'foreground' : 'background';
     setState({ appLifecycle: lifecycle });
+
+    if (isActive) {
+      void resumeDiscoverableIfNeeded('appStateChange');
+    }
 
     if (!state.isSharing) return;
 
@@ -196,6 +203,51 @@ function initLifecycleListener() {
       }
     }
   });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void resumeDiscoverableIfNeeded('visibilitychange');
+    }
+  });
+}
+
+// ── Discoverable persistence ─────────────────────────────────────────────────
+
+async function persistDiscoverablePreference(isDiscoverable: boolean): Promise<void> {
+  if (!hasNonDemoSessionReady()) return;
+  try {
+    const res = await apiPatch('/profile/discoverable', { isDiscoverable });
+    if (!res.ok) {
+      addLog(`discoverable: server ${res.status} saving preference`);
+    }
+  } catch (err) {
+    addLog(`discoverable: save error ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export function setCachedDiscoverablePreference(isDiscoverable: boolean, user?: AuthUser | null, token?: string | null) {
+  _cachedDiscoverable = isDiscoverable;
+  if (user) _resumeUser = user;
+  if (token) _resumeToken = token;
+}
+
+async function resumeDiscoverableIfNeeded(reason: string): Promise<void> {
+  if (!_cachedDiscoverable) return;
+  if (!hasNonDemoSessionReady()) return;
+  const user = _resumeUser;
+  const token = _resumeToken;
+  if (!user || !token) return;
+
+  if (!state.isSharing) {
+    addLog(`${reason}: re-starting discoverable broadcast`);
+    _autoResumeAttempted = false;
+    await tryAutoResume(user, token);
+    return;
+  }
+
+  addLog(`${reason}: refreshing discoverable broadcast`);
+  void doHeartbeat();
+  void doNearbyPoll();
 }
 
 // ── Foreground intervals ─────────────────────────────────────────────────────
@@ -531,11 +583,13 @@ export async function tryAutoResume(user: AuthUser, token: string): Promise<void
   if (!hasNonDemoSessionReady()) return;
   if (_autoResumeAttempted || state.isSharing) return;
   _autoResumeAttempted = true;
+  _resumeUser = user;
+  _resumeToken = token;
+  _cachedDiscoverable = user.isDiscoverable === true || localStorage.getItem(SK_ON) === 'true';
   try {
-    const wasOn = localStorage.getItem(SK_ON) === 'true';
-    if (wasOn) {
-      addLog('auto-resume: restoring previous sharing session');
-      await startSharing(user, token);
+    if (_cachedDiscoverable) {
+      addLog('auto-resume: restoring discoverable session');
+      await startSharing(user, token, { skipPersist: user.isDiscoverable === true });
     }
   } catch { /* ignore */ }
 }
@@ -559,7 +613,11 @@ function startDemoSharing(): void {
  * Background-capable once UIBackgroundModes: [location] is in Info.plist.
  * For Apple Tester users, uses demo mode (no backend).
  */
-export async function startSharing(user: AuthUser, token: string): Promise<void> {
+export async function startSharing(
+  user: AuthUser,
+  token: string,
+  options: { skipPersist?: boolean } = {}
+): Promise<void> {
   if (_isStarting) { addLog('startSharing: already starting'); return; }
   if (state.isSharing) { addLog('startSharing: already sharing'); return; }
 
@@ -649,6 +707,12 @@ export async function startSharing(user: AuthUser, token: string): Promise<void>
 
     // ── 4. Persist + start loops ──────────────────────────────────────────────
     persistSession(user, token);
+    _resumeUser = user;
+    _resumeToken = token;
+    _cachedDiscoverable = true;
+    if (!options.skipPersist) {
+      void persistDiscoverablePreference(true);
+    }
     _lastHeartbeatTime = Date.now();
     setState({ isSharing: true, lastHeartbeatAt: new Date() });
 
@@ -679,8 +743,10 @@ export async function stopSharing(): Promise<void> {
   addLog('stopSharing called');
   const notifyBackend = hasNonDemoSessionReady();
   forceHaltSharingLoops();
+  _cachedDiscoverable = false;
 
   if (notifyBackend) {
+    void persistDiscoverablePreference(false);
     try {
       const res = await apiPost('/sharing/stop', {});
       if (!res.ok) addLog(`stopSharing: server ${res.status}`);

@@ -32,6 +32,7 @@ export const DEV_RESET_STORAGE_KEYS = [
   'pg_saved_profiles',
   'pg_demo_connections',
   'pg_demo_saved_profiles',
+  'recentlyViewedProfiles',
 ] as const;
 
 export function isDevelopmentResetEnabled(): boolean {

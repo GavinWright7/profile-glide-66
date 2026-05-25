@@ -24,7 +24,7 @@ import {
   BACKEND_URL,
 } from '../auth/authService';
 import { SESSION_EXPIRED_MESSAGE } from '../api/client';
-import { forceHaltSharingLoops } from '../utils/sharing';
+import { forceHaltSharingLoops, setCachedDiscoverablePreference } from '../utils/sharing';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -289,6 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveSession(session);
     setToken(session.token);
     setUser(session.user);
+    setCachedDiscoverablePreference(session.user.isDiscoverable === true, session.user, session.token);
   }, []);
 
   const isDemoUser = !!user && user.id === APPLE_TESTER_USER_ID;

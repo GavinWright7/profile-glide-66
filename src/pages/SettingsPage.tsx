@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Shield, Eye, Linkedin, LogOut, ChevronRight, Sparkles } from 'lucide-react';
+import { Shield, Eye, Linkedin, LogOut, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,8 +10,6 @@ import { Button } from '@/components/ui/button';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
 import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
-import { useEntitlement } from '../hooks/useEntitlement';
-
 
 const SettingsPage = () => {
   const sharing = useSharing();
@@ -19,14 +17,9 @@ const SettingsPage = () => {
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [linkedinError, setLinkedinError] = useState<string | null>(null);
   const [linkedinSaving, setLinkedinSaving] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-  const [promoError, setPromoError] = useState<string | null>(null);
-  const [promoSaving, setPromoSaving] = useState(false);
   const navigate = useNavigate();
   const { user, token, updateSession, logout } = useAuth();
-  const { isPremium, redeemCode } = useEntitlement();
 
-  // Initialize linkedinUrl from user when available
   const displayUrl = linkedinUrl || user?.linkedinUrl || '';
 
   useEffect(() => {
@@ -90,7 +83,6 @@ const SettingsPage = () => {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground mb-6">Settings</h1>
 
-        {/* Profile section */}
         <div className="glass-card p-4 flex items-center gap-4 mb-6">
           {user?.picture ? (
             <img
@@ -112,50 +104,6 @@ const SettingsPage = () => {
           <Linkedin size={18} className="text-linkedin shrink-0" />
         </div>
 
-        {/* Premium / Promo Code */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles size={16} className="text-muted-foreground" />
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Premium
-            </h2>
-          </div>
-          <div className="glass-card p-4 space-y-3">
-            {isPremium ? (
-              <p className="text-sm text-primary font-medium">You have Premium access.</p>
-            ) : (
-              <>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Enter promo code &quot;premium&quot; for dev/testing access.
-                </p>
-                <Input
-                  type="text"
-                  placeholder="Promo code"
-                  value={promoCode}
-                  onChange={(e) => { setPromoCode(e.target.value); setPromoError(null); }}
-                  className="font-mono text-sm"
-                />
-                {promoError && <p className="text-sm text-destructive">{promoError}</p>}
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    setPromoError(null);
-                    setPromoSaving(true);
-                    const ok = await redeemCode(promoCode);
-                    setPromoSaving(false);
-                    if (ok) setPromoCode('');
-                    else setPromoError('Invalid or expired code');
-                  }}
-                  disabled={promoSaving || !promoCode.trim()}
-                >
-                  {promoSaving ? 'Redeeming…' : 'Redeem'}
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* My LinkedIn Profile Link — paste your profile URL so others can connect when they discover you */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Linkedin size={16} className="text-muted-foreground" />
@@ -191,7 +139,6 @@ const SettingsPage = () => {
           </div>
         </div>
 
-        {/* Settings groups */}
         {settingGroups.map((group) => (
           <div key={group.title} className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -211,7 +158,6 @@ const SettingsPage = () => {
           </div>
         ))}
 
-        {/* Visibility info */}
         <div className="glass-card p-4 flex items-start gap-3 mb-6">
           <Eye size={16} className="text-primary mt-0.5 shrink-0" />
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -219,7 +165,6 @@ const SettingsPage = () => {
           </p>
         </div>
 
-        {/* Sign out */}
         <button
           onClick={handleSignOut}
           className="w-full glass-card p-4 flex items-center gap-3 text-destructive hover:bg-destructive/5 transition-colors"

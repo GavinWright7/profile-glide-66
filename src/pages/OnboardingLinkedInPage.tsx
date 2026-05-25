@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Linkedin, Sparkles } from 'lucide-react';
+import { Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useNavigate } from 'react-router-dom';
@@ -8,16 +8,13 @@ import { useAuth } from '../context/AuthContext';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
 import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
-import { redeemPromoCode } from '../services/entitlementService';
 
 /**
  * Required onboarding step: user must enter their LinkedIn profile URL
  * before they can use discoverability. Shown when user.linkedinUrl is empty.
- * Optional promo code "premium" unlocks premium features.
  */
 const OnboardingLinkedInPage = () => {
   const [url, setUrl] = useState('');
-  const [promoCode, setPromoCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -51,10 +48,6 @@ const OnboardingLinkedInPage = () => {
       const { token: newToken, user } = data;
       saveSession({ token: newToken, user });
       updateSession({ token: newToken, user });
-
-      if (promoCode.trim().toLowerCase() === 'premium') {
-        await redeemPromoCode(newToken, 'premium');
-      }
 
       navigate('/onboarding/professional-background', { replace: true });
     } catch (err) {
@@ -107,22 +100,6 @@ const OnboardingLinkedInPage = () => {
             disabled={loading}
           />
 
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Sparkles size={12} className="text-primary" />
-              Promo code (optional)
-            </label>
-            <Input
-              type="text"
-              placeholder="e.g. premium"
-              value={promoCode}
-              onChange={(e) => setPromoCode(e.target.value)}
-              className="font-mono text-sm"
-              autoComplete="off"
-              disabled={loading}
-            />
-          </div>
-
           {error && (
             <p className="text-sm text-destructive">{error}</p>
           )}
@@ -135,10 +112,6 @@ const OnboardingLinkedInPage = () => {
             {loading ? 'Saving…' : 'Continue'}
           </Button>
         </form>
-
-        <p className="text-[11px] text-muted-foreground mt-6 text-center">
-          You can update this later in Settings.
-        </p>
       </motion.div>
     </div>
   );

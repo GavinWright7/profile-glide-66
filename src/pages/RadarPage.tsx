@@ -2,13 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { App } from '@capacitor/app';
 import { Linkedin, UserRound, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { useConnections } from '@/context/ConnectionsContext';
 import { useSharing } from '@/hooks/useSharing';
 import { apiGet } from '@/api/client';
 import { FREE_RADIUS_METERS } from '@/services/entitlementService';
+import { addRecentlyViewed } from '@/utils/recentlyViewed';
 import type { NearbyUser } from '@/data/mockUsers';
+
+const PROXIMITY_LABEL = 'within 500 feet of you';
 const POLL_MS = 10_000;
 
 type NearbyApiUser = {
@@ -21,12 +25,13 @@ type NearbyApiUser = {
   bio?: string;
 };
 
-function toNearbyUser(u: NearbyApiUser): NearbyUser {
+function toNearbyUser(u: NearbyApiUser): NearbyUser | null {
+  const name = u.fullName?.trim();
+  if (!name) {
+    console.warn('[Discover] skipping user with missing name', { userId: u.userId });
+    return null;
+  }
   const parts = u.headline?.split(' at ') ?? [];
-  const name =
-    u.fullName?.trim() ||
-    parts[0]?.trim() ||
-    'Nearby professional';
   return {
     id: u.userId,
     name,
@@ -42,23 +47,52 @@ function toNearbyUser(u: NearbyApiUser): NearbyUser {
   };
 }
 
+function logRecentlyViewed(u: NearbyUser) {
+  addRecentlyViewed({
+    id: u.id,
+    name: u.name,
+    title: u.jobTitle || u.headline.split(' at ')[0]?.trim() || '',
+    company: u.company || u.headline.split(' at ')[1]?.trim() || '',
+  });
+}
+
+function NearbyCardSkeleton() {
+  return (
+    <div className="rounded-xl border border-border bg-card/80 p-4 space-y-3">
+      <div className="flex gap-3">
+        <Skeleton className="w-14 h-14 rounded-full shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      </div>
+      <Skeleton className="h-9 w-full" />
+    </div>
+  );
+}
+
 const RadarPage = () => {
   const { token, isDemoUser } = useAuth();
   const sharing = useSharing();
   const { addSavedProfile } = useConnections();
   const [users, setUsers] = useState<NearbyUser[]>([]);
+  const [loading, setLoading] = useState(false);
   const [modalUser, setModalUser] = useState<NearbyUser | null>(null);
 
   const fetchNearby = useCallback(async () => {
     if (isDemoUser || !token) {
       setUsers([]);
+      setLoading(false);
       return;
     }
     const loc = sharing.currentLocation;
     if (!loc) {
       setUsers([]);
+      setLoading(false);
       return;
     }
+    setLoading(true);
     try {
       const res = await apiGet('/sharing/nearby', {
         latitude: String(loc.lat),
@@ -70,10 +104,13 @@ const RadarPage = () => {
       const data = (await res.json()) as { users?: NearbyApiUser[] };
       const list = (data.users ?? [])
         .map(toNearbyUser)
+        .filter((u): u is NearbyUser => u !== null)
         .filter((u) => u.distance <= FREE_RADIUS_METERS + 0.5);
       setUsers(list);
     } catch {
       /* ignore */
+    } finally {
+      setLoading(false);
     }
   }, [isDemoUser, token, sharing.currentLocation]);
 
@@ -92,8 +129,15 @@ const RadarPage = () => {
     };
   }, [fetchNearby]);
 
+  const openLinkedIn = (u: NearbyUser) => {
+    logRecentlyViewed(u);
+    window.open(u.linkedinProfileUrl, '_blank');
+  };
+
   const getInitials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+
+  const showList = sharing.isSharing || isDemoUser;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -102,7 +146,7 @@ const RadarPage = () => {
         style={{ paddingTop: 'calc(var(--page-padding-top) + env(safe-area-inset-top, 0px))' }}
       >
         <h1 className="text-2xl font-bold text-foreground">Discover</h1>
-        <p className="text-sm text-muted-foreground mt-1">People within 500 feet of you</p>
+        <p className="text-sm text-muted-foreground mt-1">People {PROXIMITY_LABEL}</p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-padding-x)] pb-24 max-w-md mx-auto w-full">
@@ -112,13 +156,19 @@ const RadarPage = () => {
           </p>
         )}
 
-        {(sharing.isSharing || isDemoUser) && users.length === 0 && (
+        {showList && loading && users.length === 0 && (
+          <div className="space-y-3">
+            <NearbyCardSkeleton />
+            <NearbyCardSkeleton />
+          </div>
+        )}
+
+        {showList && !loading && users.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">No one nearby yet</p>
         )}
 
         <div className="space-y-3">
           {users.map((u) => {
-            const feet = Math.round(u.distance * 3.28084);
             const hasLi = Boolean(u.linkedinProfileUrl?.trim());
             return (
               <div
@@ -142,7 +192,7 @@ const RadarPage = () => {
                     {u.headline ? (
                       <p className="text-sm text-muted-foreground truncate">{u.headline}</p>
                     ) : null}
-                    <p className="text-xs text-muted-foreground mt-1">{feet} ft away</p>
+                    <p className="text-xs text-muted-foreground mt-1">{PROXIMITY_LABEL}</p>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -173,7 +223,7 @@ const RadarPage = () => {
                         size="sm"
                         variant="secondary"
                         className="w-full min-w-0 gap-1 px-2"
-                        onClick={() => window.open(u.linkedinProfileUrl, '_blank')}
+                        onClick={() => openLinkedIn(u)}
                       >
                         <Linkedin className="w-4 h-4 shrink-0" />
                         <span className="truncate">Connect</span>
@@ -239,7 +289,7 @@ const RadarPage = () => {
                 <Button
                   type="button"
                   className="w-full gap-2 bg-linkedin hover:bg-linkedin/90 text-linkedin-foreground"
-                  onClick={() => window.open(modalUser.linkedinProfileUrl, '_blank')}
+                  onClick={() => openLinkedIn(modalUser)}
                 >
                   <Linkedin size={18} />
                   Connect on LinkedIn

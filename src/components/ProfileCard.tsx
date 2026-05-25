@@ -9,6 +9,8 @@ import { Capacitor } from '@capacitor/core';
 import { toast } from 'sonner';
 import { isValidLinkedInUrl } from '@/utils/linkedinUrl';
 
+const PROXIMITY_LABEL = 'within 500 feet of you';
+
 interface ProfileCardProps {
   user: NearbyUser;
   onClose: () => void;
@@ -116,7 +118,7 @@ const ProfileCard = ({ user, onClose, onConnect, onSaveProfile }: ProfileCardPro
               </span>
             )}
             <span className="text-xs text-muted-foreground">•</span>
-            <span className="text-xs text-muted-foreground">{user.distance}m away</span>
+            <span className="text-xs text-muted-foreground">{PROXIMITY_LABEL}</span>
           </div>
 
           <div className="w-full mt-6 space-y-3">

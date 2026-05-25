@@ -7,6 +7,7 @@ const {
   getProfile,
   getMe,
   patchMe,
+  updateDiscoverable,
   getInterestsOptions,
   updateProfessionalBackground,
   updateGoals,
@@ -26,6 +27,7 @@ function asyncHandler(fn) {
 router.get('/interests-options', getInterestsOptions);
 router.get('/me', requireAuth, asyncHandler(getMe));
 router.patch('/me', requireAuth, asyncHandler(patchMe));
+router.patch('/discoverable', requireAuth, asyncHandler(updateDiscoverable));
 router.put('/linkedin-url', requireAuth, asyncHandler(updateLinkedInUrl));
 router.put('/interests', requireAuth, asyncHandler(updateInterests));
 router.put('/professional-background', requireAuth, asyncHandler(updateProfessionalBackground));

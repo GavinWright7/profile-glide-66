@@ -101,8 +101,8 @@ const OnboardingProfessionalBackgroundPage = () => {
         currentJobTitle: currentJobTitle.trim(),
         currentCompany: currentCompany.trim() || null,
         almaMater: almaMater.trim(),
-        graduationYear: gradTrim || null,
         pastCompanies,
+        ...(gradTrim ? { graduationYear: gradTrim } : {}),
       });
 
       let data: { error?: string; token?: string; user?: Record<string, unknown> };
@@ -131,40 +131,28 @@ const OnboardingProfessionalBackgroundPage = () => {
         throw new Error('Server response missing token or user');
       }
 
-      /** API must return graduationYear; merge from form if an older deploy omits it (see OnboardingGuard). */
-      const gradFromForm = graduationYear.trim();
       const raw = updatedUser as Record<string, unknown>;
-      const gradFromApi =
-        raw.graduationYear != null && String(raw.graduationYear).trim() !== ''
-          ? String(raw.graduationYear).trim()
-          : '';
-      const gradMerged = gradFromApi || gradFromForm;
-      if (!gradMerged) {
-        console.error(`${DIAG} response missing graduationYear and form empty`);
-        throw new Error('Could not apply graduation year to session');
-      }
-      if (!gradFromApi && gradFromForm) {
-        console.warn(`${DIAG} API user omitted graduationYear; merging from form`, { gradFromForm });
-      }
+      const gradFromForm = graduationYear.trim();
+      const asUser = {
+        ...(updatedUser as unknown as AuthUser),
+        ...(gradFromForm ? { graduationYear: gradFromForm } : {}),
+      };
 
-      const u = { ...raw, graduationYear: gradMerged } as Record<string, unknown>;
       console.log(`${DIAG} save OK; applying session + navigate /`, {
-        userKeys: Object.keys(u),
-        hasLinkedinUrl: typeof u.linkedinUrl === 'string' && u.linkedinUrl.length > 0,
+        userKeys: Object.keys(raw),
+        hasLinkedinUrl: typeof raw.linkedinUrl === 'string' && raw.linkedinUrl.length > 0,
         linkedinUrlValid:
-          typeof u.linkedinUrl === 'string' ? isValidLinkedInUrl(u.linkedinUrl) : false,
-        hasJobTitle: typeof u.currentJobTitle === 'string' && u.currentJobTitle.trim().length > 0,
-        hasAlmaMater: typeof u.almaMater === 'string' && u.almaMater.trim().length > 0,
-        graduationYear: u.graduationYear,
+          typeof raw.linkedinUrl === 'string' ? isValidLinkedInUrl(raw.linkedinUrl) : false,
+        hasJobTitle: typeof raw.currentJobTitle === 'string' && raw.currentJobTitle.trim().length > 0,
+        hasAlmaMater: typeof raw.almaMater === 'string' && raw.almaMater.trim().length > 0,
+        graduationYear: asUser.graduationYear ?? '(omitted)',
       });
 
-      const asUser = { ...(updatedUser as unknown as AuthUser), graduationYear: gradMerged };
       saveSession({ token: newToken, user: asUser });
       // Ensure AuthContext sees the new user before OnboardingGuard runs on `/`.
       flushSync(() => {
         updateSession({ token: newToken, user: asUser });
       });
-      console.log(`${DIAG} router.navigate('/') replace`);
       navigate('/', { replace: true });
     } catch (err) {
       console.error(`${DIAG} failed`, err instanceof Error ? err.message : err);

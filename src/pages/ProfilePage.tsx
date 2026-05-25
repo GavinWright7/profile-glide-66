@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Loader2, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
-import { apiGet, apiPatch } from '@/api/client';
+import { apiGet } from '@/api/client';
 import type { AuthUser } from '@/auth/authService';
 import { bioProfileFromAuthUsers, generateBio } from '@/utils/bioTemplate';
 
-function bioForEditing(u: AuthUser | null | undefined, sessionUser?: AuthUser | null): string {
+function bioForDisplay(u: AuthUser | null | undefined, sessionUser?: AuthUser | null): string {
   const stored = (u?.bio ?? '').trim();
   if (stored) return stored;
   const profile = bioProfileFromAuthUsers(u ?? undefined, sessionUser ?? undefined);
@@ -15,16 +15,16 @@ function bioForEditing(u: AuthUser | null | undefined, sessionUser?: AuthUser | 
 }
 
 export default function ProfilePage() {
-  const { token, user, updateSession, isDemoUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { token, user, isDemoUser } = useAuth();
   const [bio, setBio] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedFlash, setSavedFlash] = useState(false);
 
   const loadMe = useCallback(async () => {
     if (!token || isDemoUser) {
-      setBio(bioForEditing(user, user));
+      setBio(bioForDisplay(user, user));
       setLoading(false);
       return;
     }
@@ -34,7 +34,7 @@ export default function ProfilePage() {
       const res = await apiGet('/profile');
       const data = (await res.json()) as { user?: AuthUser; error?: string };
       if (!res.ok) throw new Error(data.error || 'Failed to load profile');
-      setBio(bioForEditing(data.user ?? null, user));
+      setBio(bioForDisplay(data.user ?? null, user));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -44,35 +44,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     void loadMe();
-  }, [token, isDemoUser]);
-
-  const save = async () => {
-    if (!token || isDemoUser) {
-      setError('Sign in to save your profile.');
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    const trimmed = bio.trim();
-    try {
-      const res = await apiPatch('/profile', { bio: trimmed });
-      const data = (await res.json()) as { error?: string; token?: string; user?: AuthUser };
-      if (!res.ok) throw new Error(data.error || 'Save failed');
-      const { token: newToken, user: newUser } = data;
-      if (newToken && newUser) {
-        await updateSession({ token: newToken, user: newUser });
-        setBio((newUser.bio ?? '').trim() || trimmed);
-      } else {
-        setBio(trimmed);
-      }
-      setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 2000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [loadMe, location.pathname]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
@@ -96,28 +68,14 @@ export default function ProfilePage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Bio
                   </label>
-                  <Textarea
-                    className="mt-2 min-h-[160px] text-sm"
-                    placeholder="Tell nearby professionals about yourself…"
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    autoComplete="off"
-                    autoCorrect="on"
-                    spellCheck
-                  />
+                  <div className="mt-2 min-h-[160px] rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground whitespace-pre-wrap">
+                    {bio.trim() ? bio : '—'}
+                  </div>
                 </div>
 
-                <Button className="w-full" onClick={() => void save()} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="animate-spin mr-2 w-4 h-4" />
-                      Saving…
-                    </>
-                  ) : savedFlash ? (
-                    'Saved'
-                  ) : (
-                    'Save'
-                  )}
+                <Button className="w-full gap-2" onClick={() => navigate('/profile/edit')}>
+                  <Pencil className="w-4 h-4" />
+                  Edit
                 </Button>
               </div>
             </>

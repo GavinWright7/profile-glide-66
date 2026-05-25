@@ -2,10 +2,7 @@ import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { NearbyShareUser } from '@/utils/sharing';
 
-function formatDistance(meters: number): string {
-  if (meters < 1609) return `${Math.max(1, Math.round(meters * 3.28084))} ft away`;
-  return `${(meters / 1609.344).toFixed(1)} mi away`;
-}
+const PROXIMITY_LABEL = 'within 500 feet of you';
 
 export interface DiscoverUserProfileModalProps {
   user: NearbyShareUser;
@@ -13,6 +10,11 @@ export interface DiscoverUserProfileModalProps {
 }
 
 export function DiscoverUserProfileModal({ user, onClose }: DiscoverUserProfileModalProps) {
+  const name = user.fullName?.trim();
+  if (!name) {
+    console.warn('[Discover] modal missing name', { userId: user.userId });
+    return null;
+  }
   const company = user.headline?.split(' at ')[1]?.trim() ?? '';
   const titlePart = user.headline?.split(' at ')[0]?.trim() ?? '';
 
@@ -61,14 +63,14 @@ export function DiscoverUserProfileModal({ user, onClose }: DiscoverUserProfileM
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-foreground truncate">{user.fullName || 'Unknown'}</h2>
+              <h2 className="text-lg font-bold text-foreground truncate">{name}</h2>
               {(titlePart || company) && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {titlePart}
                   {company ? ` · ${company}` : ''}
                 </p>
               )}
-              <p className="text-[11px] text-muted-foreground mt-1">{formatDistance(user.distanceMeters)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">{PROXIMITY_LABEL}</p>
             </div>
           </div>
 

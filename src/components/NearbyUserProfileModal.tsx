@@ -20,6 +20,11 @@ function initials(name: string) {
 }
 
 export function NearbyUserProfileModal({ user, onClose }: NearbyUserProfileModalProps) {
+  const name = user.fullName?.trim();
+  if (!name) {
+    console.warn('[Discover] profile modal missing name', { userId: user.userId });
+    return null;
+  }
   const bioText = (user.bio ?? '').trim();
 
   return (
@@ -51,16 +56,16 @@ export function NearbyUserProfileModal({ user, onClose }: NearbyUserProfileModal
           {user.photoUrl ? (
             <img
               src={user.photoUrl}
-              alt={user.fullName}
+              alt={name}
               className="w-20 h-20 rounded-full object-cover border-2 border-primary/30 mb-4"
             />
           ) : (
             <div className="w-20 h-20 rounded-full bg-secondary border-2 border-primary/30 flex items-center justify-center mb-4">
-              <span className="text-foreground text-xl font-bold">{initials(user.fullName || '?')}</span>
+              <span className="text-foreground text-xl font-bold">{initials(name)}</span>
             </div>
           )}
 
-          <h2 className="text-xl font-bold text-foreground">{user.fullName || 'Unknown'}</h2>
+          <h2 className="text-xl font-bold text-foreground">{name}</h2>
           {user.headline ? (
             <p className="text-sm text-muted-foreground mt-1">{user.headline}</p>
           ) : null}

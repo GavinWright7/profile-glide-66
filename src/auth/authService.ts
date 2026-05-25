@@ -103,6 +103,7 @@ export interface AuthUser {
   graduationYear?: string;
   bio?: string;
   career?: string;
+  isDiscoverable?: boolean;
 }
 
 export interface AuthSession {

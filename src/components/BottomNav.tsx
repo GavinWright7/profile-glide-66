@@ -1,12 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Radar, Users, History, Settings, Home, User } from 'lucide-react';
+import { Radar, History, Settings, Home, User } from 'lucide-react';
 import { useSharing } from '../hooks/useSharing';
 import { swipeDirectionRef } from '@/utils/tabNavigation';
 
 const tabs = [
   { path: '/', icon: Home, label: 'Home' },
   { path: '/radar', icon: Radar, label: 'Discover', showBadgeWhenSharing: true },
-  { path: '/connections', icon: Users, label: 'Connections' },
   { path: '/history', icon: History, label: 'History' },
   { path: '/settings', icon: Settings, label: 'Settings' },
   { path: '/profile', icon: User, label: 'Profile' },
@@ -19,6 +18,7 @@ const BottomNav = () => {
 
   if (location.pathname === '/login') return null;
   if (location.pathname.startsWith('/onboarding')) return null;
+  if (location.pathname.startsWith('/profile/edit')) return null;
 
   return (
     <nav

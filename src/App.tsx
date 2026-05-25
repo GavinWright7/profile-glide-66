@@ -8,11 +8,11 @@ import AnimatedTabPage from "./components/AnimatedTabPage";
 import LoginPage from "./pages/LoginPage";
 import HomePage from "./pages/HomePage";
 import RadarPage from "./pages/RadarPage";
-import ConnectionsPage from "./pages/ConnectionsPage";
 import HistoryPage from "./pages/HistoryPage";
 import SavedProfilesPage from "./pages/SavedProfilesPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
+import ProfileEditPage from "./pages/ProfileEditPage";
 import OnboardingLinkedInPage from "./pages/OnboardingLinkedInPage";
 import OnboardingProfessionalBackgroundPage from "./pages/OnboardingProfessionalBackgroundPage";
 import NotFound from "./pages/NotFound";
@@ -132,13 +132,11 @@ const App = () => (
               }
             />
             <Route
-              path="/connections"
+              path="/profile/edit"
               element={
                 <ProtectedRoute>
                   <OnboardingGuard>
-                    <AnimatedTabPage>
-                      <ConnectionsPage />
-                    </AnimatedTabPage>
+                    <ProfileEditPage />
                   </OnboardingGuard>
                 </ProtectedRoute>
               }
