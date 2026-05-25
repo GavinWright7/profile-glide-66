@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { App } from '@capacitor/app';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { DiscoverProfileCard, PROXIMITY_LABEL } from '@/components/DiscoverProfileCard';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
@@ -60,43 +59,23 @@ function logRecentlyViewed(u: NearbyUser) {
   });
 }
 
-function NearbyCardSkeleton() {
-  return (
-    <div className="rounded-xl border border-border bg-card/80 p-4 space-y-3">
-      <div className="flex gap-3">
-        <Skeleton className="w-14 h-14 rounded-full shrink-0" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-2/3" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-1/2" />
-        </div>
-      </div>
-      <Skeleton className="h-9 w-full" />
-    </div>
-  );
-}
-
 const RadarPage = () => {
   const { token, isDemoUser } = useAuth();
   const sharing = useSharing();
   const { addSavedProfile } = useConnections();
   const [users, setUsers] = useState<NearbyUser[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalUser, setModalUser] = useState<NearbyUser | null>(null);
 
   const fetchNearby = useCallback(async () => {
     if (isDemoUser || !token) {
       setUsers([]);
-      setLoading(false);
       return;
     }
     const loc = sharing.currentLocation;
     if (!loc) {
       setUsers([]);
-      setLoading(false);
       return;
     }
-    setLoading(true);
     try {
       const res = await apiGet('/sharing/nearby', {
         latitude: String(loc.lat),
@@ -113,8 +92,6 @@ const RadarPage = () => {
       setUsers(list);
     } catch {
       /* ignore */
-    } finally {
-      setLoading(false);
     }
   }, [isDemoUser, token, sharing.currentLocation]);
 
@@ -141,7 +118,7 @@ const RadarPage = () => {
   const getInitials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 
-  const showList = sharing.isSharing || isDemoUser;
+  const showDiscoverSpinner = sharing.isSharing || isDemoUser;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -149,28 +126,18 @@ const RadarPage = () => {
         className="shrink-0 px-[var(--page-padding-x)] pb-2"
         style={{ paddingTop: 'calc(var(--page-padding-top) + env(safe-area-inset-top, 0px))' }}
       >
-        <h1 className="text-2xl font-bold text-foreground">Discover</h1>
-        <p className="text-sm text-muted-foreground mt-1">People {PROXIMITY_LABEL}</p>
+        <div className="flex items-start justify-between gap-3 max-w-md mx-auto w-full">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-foreground">Discover</h1>
+            <p className="text-sm text-muted-foreground mt-1">People {PROXIMITY_LABEL}</p>
+          </div>
+          {showDiscoverSpinner ? (
+            <div className="discover-spinner shrink-0 mt-1" aria-hidden="true" />
+          ) : null}
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-padding-x)] pb-24 max-w-md mx-auto w-full">
-        {!sharing.isSharing && !isDemoUser && (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            Start sharing from Home to see who&apos;s nearby.
-          </p>
-        )}
-
-        {showList && loading && users.length === 0 && (
-          <div className="space-y-3">
-            <NearbyCardSkeleton />
-            <NearbyCardSkeleton />
-          </div>
-        )}
-
-        {showList && !loading && users.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">No one nearby yet</p>
-        )}
-
         <div className="space-y-3">
           {users.map((u) => (
             <DiscoverProfileCard

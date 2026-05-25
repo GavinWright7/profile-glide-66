@@ -57,7 +57,11 @@ module.exports = {
 
   REDIS_GEO_KEY: 'pg:active:geo',
   REDIS_SESSION_PREFIX: 'pg:session:',
-  REDIS_SESSION_TTL: 180,
+  /** Legacy Redis session TTL — nearby discovery uses Neon last_seen_at (24h). */
+  REDIS_SESSION_TTL: 86400,
+
+  /** Users visible in nearby if last_seen_at is within this window. */
+  DISCOVERY_MAX_AGE_HOURS: 24,
 
   requireEnv,
   warnEnv,

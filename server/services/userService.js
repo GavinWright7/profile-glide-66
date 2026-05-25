@@ -285,6 +285,92 @@ async function updateIsDiscoverable(linkedinSubjectId, isDiscoverable) {
   );
 }
 
+/** Persist last known location for discoverable users (Neon source of truth). */
+async function persistUserLocation(linkedinSubjectId, latitude, longitude) {
+  await db.query(
+    `UPDATE profiles p
+     SET last_latitude = $2,
+         last_longitude = $3,
+         last_seen_at = NOW(),
+         updated_at = NOW()
+     FROM users u
+     WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
+    [linkedinSubjectId, latitude, longitude]
+  );
+}
+
+/** Refresh last_seen_at without moving (keepalive / foreground ping). */
+async function touchUserLastSeen(linkedinSubjectId) {
+  await db.query(
+    `UPDATE profiles p
+     SET last_seen_at = NOW(), updated_at = NOW()
+     FROM users u
+     WHERE u.id = p.user_id
+       AND u.linkedin_subject_id = $1
+       AND p.is_discoverable = true`,
+    [linkedinSubjectId]
+  );
+}
+
+const DISCOVERY_MAX_AGE_HOURS = 24;
+
+/**
+ * Nearby discoverable users from Neon (not Redis).
+ * Visible when is_discoverable = true, coords set, last_seen within 24h, within radius.
+ */
+async function getNearbyDiscoverableUsers(
+  latitude,
+  longitude,
+  radiusMeters,
+  excludeLinkedinSubjectId,
+  limit = 50
+) {
+  const res = await db.query(
+    `SELECT u.linkedin_subject_id,
+            u.id AS user_uuid,
+            p.user_id,
+            p.full_name,
+            p.first_name,
+            p.last_name,
+            p.headline,
+            p.photo_url,
+            p.linkedin_url,
+            p.interests,
+            p.bio,
+            p.career,
+            p.current_job_title,
+            p.current_company,
+            p.alma_mater,
+            p.past_companies,
+            p.graduation_year,
+            p.last_latitude,
+            p.last_longitude,
+            sub.distance_meters
+     FROM (
+       SELECT p2.user_id,
+              (6371000 * acos(LEAST(1.0, GREATEST(-1.0,
+                cos(radians($1::float8)) * cos(radians(p2.last_latitude::float8)) *
+                cos(radians(p2.last_longitude::float8) - radians($2::float8)) +
+                sin(radians($1::float8)) * sin(radians(p2.last_latitude::float8))
+              )))) AS distance_meters
+       FROM profiles p2
+       JOIN users u2 ON u2.id = p2.user_id
+       WHERE p2.is_discoverable = true
+         AND p2.last_latitude IS NOT NULL
+         AND p2.last_longitude IS NOT NULL
+         AND p2.last_seen_at >= NOW() - ($5::int * INTERVAL '1 hour')
+         AND u2.linkedin_subject_id != $3
+     ) sub
+     JOIN profiles p ON p.user_id = sub.user_id
+     JOIN users u ON u.id = p.user_id
+     WHERE sub.distance_meters <= $4
+     ORDER BY sub.distance_meters ASC
+     LIMIT $6`,
+    [latitude, longitude, excludeLinkedinSubjectId, radiusMeters, DISCOVERY_MAX_AGE_HOURS, limit]
+  );
+  return res.rows;
+}
+
 async function listSavedProfilesForSaver(saverLinkedinSubjectId) {
   const res = await db.query(
     `SELECT sp.id, sp.target_linkedin_subject_id, sp.created_at,
@@ -337,6 +423,9 @@ module.exports = {
   bioForProfileRow,
   updateProfileMePatch,
   updateIsDiscoverable,
+  persistUserLocation,
+  touchUserLastSeen,
+  getNearbyDiscoverableUsers,
   listSavedProfilesForSaver,
   insertSavedProfile,
   deleteSavedProfile,

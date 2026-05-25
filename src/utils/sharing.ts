@@ -31,7 +31,7 @@ import { apiPost, apiGet, apiPatch } from '../api/client';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const HEARTBEAT_FG_MS   = 3_000;    // foreground: heartbeat every 3 s
-const HEARTBEAT_BG_MS   = 15_000;   // background: heartbeat every 15 s (via watchPosition)
+const HEARTBEAT_BG_MS   = 300_000;  // background: location persist every 5 min
 const POLL_FG_MS        = 5_000;    // foreground: nearby poll every 5 s
 const MAX_LOGS          = 50;
 
@@ -261,12 +261,35 @@ export function setCachedDiscoverablePreference(isDiscoverable: boolean, user?: 
   if (token) _resumeToken = token;
 }
 
+async function persistDiscoverableLocationToDb(reason: string): Promise<void> {
+  if (!_cachedDiscoverable || !hasNonDemoSessionReady()) return;
+  const loc = _location ?? (await getPosition(true));
+  if (!loc) return;
+  _location = loc;
+  setState({ currentLocation: loc });
+  try {
+    const res = await apiPatch('/profile/location', {
+      latitude: loc.lat,
+      longitude: loc.lng,
+    });
+    if (res.ok) {
+      addLog(`${reason}: location persisted ✓`);
+    } else {
+      addLog(`${reason}: location persist ${res.status}`);
+    }
+  } catch (err) {
+    addLog(`${reason}: location persist error ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function resumeDiscoverableIfNeeded(reason: string): Promise<void> {
   if (!_cachedDiscoverable) return;
   if (!hasNonDemoSessionReady()) return;
   const user = _resumeUser;
   const token = _resumeToken;
   if (!user || !token) return;
+
+  void persistDiscoverableLocationToDb(reason);
 
   if (!state.isSharing) {
     addLog(`${reason}: re-starting discoverable broadcast`);
@@ -321,7 +344,8 @@ async function startBackgroundWatch() {
         if (now - _lastHeartbeatTime >= HEARTBEAT_BG_MS) {
           _lastHeartbeatTime = now;
           void doHeartbeat();
-          void doNearbyPoll();   // piggyback poll with every background heartbeat
+          void persistDiscoverableLocationToDb('background watch');
+          void doNearbyPoll();
         }
       }
     );

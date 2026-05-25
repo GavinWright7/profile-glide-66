@@ -9,6 +9,7 @@ const {
   getMe,
   patchMe,
   updateDiscoverable,
+  updateLocation,
   getInterestsOptions,
   updateProfessionalBackground,
   updateGoals,
@@ -29,6 +30,7 @@ router.get('/interests-options', getInterestsOptions);
 router.get('/me', requireAuth, asyncHandler(getMe));
 router.patch('/me', requireAuth, asyncHandler(patchMe));
 router.patch('/discoverable', requireAuth, discoverableRateLimiter, asyncHandler(updateDiscoverable));
+router.patch('/location', requireAuth, asyncHandler(updateLocation));
 router.put('/linkedin-url', requireAuth, asyncHandler(updateLinkedInUrl));
 router.put('/interests', requireAuth, asyncHandler(updateInterests));
 router.put('/professional-background', requireAuth, asyncHandler(updateProfessionalBackground));

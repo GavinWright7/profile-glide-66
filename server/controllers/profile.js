@@ -477,6 +477,32 @@ async function updateDiscoverable(req, res) {
   }
 }
 
+/**
+ * PATCH /profile/location
+ * Body: { latitude, longitude }
+ * Persists last known location + last_seen_at while discoverable.
+ */
+async function updateLocation(req, res) {
+  const lat = parseFloat(req.body?.latitude);
+  const lon = parseFloat(req.body?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return res.status(400).json({ error: 'latitude and longitude are required numbers' });
+  }
+
+  const user = req.user;
+  try {
+    const row = await userService.getProfileByLinkedInId(user.id);
+    if (!row || row.is_discoverable !== true) {
+      return res.status(403).json({ error: 'Enable discoverability to update location' });
+    }
+    await userService.persistUserLocation(user.id, lat, lon);
+    res.json({ success: true, lastSeenAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[profile] updateLocation error:', err.message);
+    res.status(500).json({ error: 'Failed to update location' });
+  }
+}
+
 module.exports = {
   updateLinkedInUrl,
   updateInterests,
@@ -484,6 +510,7 @@ module.exports = {
   getMe,
   patchMe,
   updateDiscoverable,
+  updateLocation,
   getInterestsOptions,
   updateProfessionalBackground,
   updateGoals,

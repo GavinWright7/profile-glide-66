@@ -1,10 +1,8 @@
 /**
  * sharing.js — live presence + location-based nearby discovery.
  *
- * Storage: Redis GEO for nearby lookup, Neon for profiles/interests.
- * A user is "visible" when in Redis GEO and session TTL is fresh.
- * Nearby: Redis GEO → user IDs + distances → Neon profiles → merge.
- * Sort: distance (default) or relevance (matching interests).
+ * Nearby lookup: NeonDB profiles (is_discoverable, last_latitude/longitude, last_seen_at).
+ * Redis GEO/session TTL is supplementary cache only — not required for discovery.
  */
 
 const config = require('../config');
@@ -106,6 +104,9 @@ async function startSharing(req, res) {
   try {
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
+    await userService.persistUserLocation(userId, lat, lon).catch((err) => {
+      console.warn('[sharing] start location persist error:', err.message);
+    });
     try {
       const [profile, isPremium] = await Promise.all([
         userService.getProfileByLinkedInId(userId).catch(() => null),
@@ -168,6 +169,9 @@ async function heartbeat(req, res) {
   try {
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
+    await userService.persistUserLocation(userId, lat, lon).catch((err) => {
+      console.warn('[sharing] heartbeat location persist error:', err.message);
+    });
     await redis.redisRefreshTtl(userId);
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
@@ -181,9 +185,8 @@ async function keepalive(req, res) {
   const userId = req.userId;
   try {
     await redis.redisRefreshTtl(userId);
-    console.log('[Presence] heartbeat TTL refreshed', {
-      userId,
-      ttlSeconds: config.REDIS_SESSION_TTL,
+    await userService.touchUserLastSeen(userId).catch((err) => {
+      console.warn('[sharing] keepalive last_seen error:', err.message);
     });
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
@@ -266,122 +269,45 @@ async function getNearby(req, res) {
       return res.status(403).json({ error: 'Premium required for radar filters', requiresPremium: true });
     }
 
-    const raw = await redis.redisGeoSearchWithCoords(lon, lat, radiusMeters, 50);
-    const allEntries = Array.isArray(raw)
-      ? raw.map((r) => {
-          if (!Array.isArray(r)) return [r, 0, null];
-          const id = r[0];
-          const dist = parseFloat(r[1]) || 0;
-          const coord = r[2];
-          const latLng = coord && Array.isArray(coord) && coord.length >= 2
-            ? { latitude: parseFloat(coord[1]), longitude: parseFloat(coord[0]) }
-            : null;
-          return [id, dist, latLng];
-        })
-      : [];
+    const dbRows = await userService.getNearbyDiscoverableUsers(
+      lat,
+      lon,
+      radiusMeters,
+      userId,
+      50
+    );
 
-    const candidates = allEntries.filter(([id]) => id && id !== userId);
-    const sessionKeys = candidates.map(([id]) => `${config.REDIS_SESSION_PREFIX}${id}`);
-    const sessionVals = sessionKeys.length > 0
-      ? await redis.withTimeout(r.mget(...sessionKeys))
-      : [];
-    const entries = candidates.filter((_, idx) => sessionVals[idx] != null);
-
-    const nearbyUserIds = entries.map(([id]) => id);
-    if (nearbyUserIds.length === 0) {
+    if (dbRows.length === 0) {
       return res.json({ users: [], count: 0 });
     }
 
-    console.log('[Nearby] hydrating user ids', nearbyUserIds);
+    const myProfile = await userService.getProfileByLinkedInId(userId).catch(() => null);
+    const myInterests = myProfile?.interests || cachedRequesterProfile?.interests || [];
 
-    const cachedProfiles = await Promise.all(nearbyUserIds.map((id) => getCachedProfile(r, id)));
-    const neonProfiles = await userService.getProfilesByUserIds(nearbyUserIds).catch((err) => {
-      console.warn('[Nearby] Neon hydration failed:', err.message);
-      return [];
+    let users = dbRows.map((row) => {
+      const id = row.linkedin_subject_id;
+      const interests = row.interests || [];
+      const relevanceScore = computeRelevanceScore(myInterests, interests);
+      const headline = row.headline || '';
+      const jobTitle = headline.split(' at ')[0]?.trim() || '';
+      const fullName = displayNameFromRow(row);
+      const dist = Math.round(parseFloat(row.distance_meters) || 0);
+      return {
+        userId: id,
+        fullName,
+        headline,
+        jobTitle,
+        photoUrl: row.photo_url || '',
+        linkedinUrl: row.linkedin_url || '',
+        distanceMeters: dist,
+        interests,
+        bio: userService.bioForProfileRow(row),
+        career: row.career || '',
+        relevanceScore,
+        latitude: row.last_latitude != null ? parseFloat(row.last_latitude) : undefined,
+        longitude: row.last_longitude != null ? parseFloat(row.last_longitude) : undefined,
+      };
     });
-    const neonByUserId = Object.fromEntries(
-      neonProfiles.map((p) => [p.linkedin_subject_id, p])
-    );
-
-    const profileByUserId = Object.fromEntries(
-      nearbyUserIds.map((id, idx) => {
-        const merged = mergeCachedWithNeon(cachedProfiles[idx], neonByUserId[id]);
-        if (merged) return [id, merged];
-        console.warn('[Nearby] missing name fallback', { userId: id });
-        return [
-          id,
-          {
-            fullName: '',
-            headline: '',
-            photoUrl: '',
-            linkedinUrl: '',
-            interests: [],
-            bio: '',
-            career: '',
-            userUuid: null,
-          },
-        ];
-      })
-    );
-
-    // Refresh Redis cache when Neon has a name but cache was empty/stale
-    await Promise.all(
-      nearbyUserIds.map(async (id) => {
-        const profile = profileByUserId[id];
-        const neonName = displayNameFromRow(neonByUserId[id]);
-        const cachedName = String(profile?.fullName ?? '').trim();
-        if (neonName && neonName !== cachedName) {
-          try {
-            await cacheUserProfile(r, id, { ...profile, fullName: neonName });
-          } catch {}
-        } else if (!cachedProfiles[nearbyUserIds.indexOf(id)] && profile?.fullName) {
-          try {
-            await cacheUserProfile(r, id, profile);
-          } catch {}
-        }
-      })
-    );
-    const myInterests = cachedRequesterProfile?.interests || [];
-
-    let users = entries
-      .filter(([id]) => id !== userId)
-      .map(([id, dist, latLng]) => {
-        const profile = profileByUserId[id];
-        const interests = profile?.interests || [];
-        const relevanceScore = computeRelevanceScore(myInterests, interests);
-        const headline = profile?.headline || '';
-        const jobTitle = headline.split(' at ')[0]?.trim() || '';
-        let fullName = String(profile?.fullName || profile?.full_name || '').trim();
-        if (!fullName) {
-          const neonRow = neonByUserId[id];
-          fullName = displayNameFromRow(neonRow);
-          if (!fullName) {
-            console.warn('[Nearby] missing name fallback', { userId: id, hasNeonRow: !!neonRow });
-          }
-        }
-        const u = {
-          userId: id,
-          fullName,
-          headline,
-          jobTitle,
-          photoUrl: profile?.photoUrl || profile?.photo_url || '',
-          linkedinUrl: profile?.linkedinUrl || profile?.linkedin_url || '',
-          distanceMeters: Math.round(dist),
-          interests: interests,
-          bio: profile?.bio || '',
-          career: profile?.career || '',
-          relevanceScore,
-        };
-        const precise = exactCoords.get(id);
-        if (precise) {
-          u.latitude = precise.latitude;
-          u.longitude = precise.longitude;
-        } else if (latLng) {
-          u.latitude = latLng.latitude;
-          u.longitude = latLng.longitude;
-        }
-        return u;
-      });
 
     if (hasFilters) {
       users = users.filter((u) => {
