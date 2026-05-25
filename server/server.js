@@ -105,10 +105,12 @@ const sharingRoutes = require('./routes/sharing');
 const interactionsRoutes = require('./routes/interactions');
 const premiumRoutes = require('./routes/premium');
 const savedProfilesRoutes = require('./routes/savedProfiles');
+const debugRoutes = require('./routes/debug');
 
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/sharing', sharingRoutes);
+app.use('/debug', debugRoutes);
 app.use('/interactions', interactionsRoutes);
 app.use('/premium', premiumRoutes);
 app.use('/saved-profiles', savedProfilesRoutes);

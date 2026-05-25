@@ -104,9 +104,7 @@ async function startSharing(req, res) {
   try {
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
-    await userService.persistUserLocation(userId, lat, lon).catch((err) => {
-      console.warn('[sharing] start location persist error:', err.message);
-    });
+    await userService.persistUserLocation(userId, lat, lon);
     try {
       const [profile, isPremium] = await Promise.all([
         userService.getProfileByLinkedInId(userId).catch(() => null),
@@ -169,9 +167,7 @@ async function heartbeat(req, res) {
   try {
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
-    await userService.persistUserLocation(userId, lat, lon).catch((err) => {
-      console.warn('[sharing] heartbeat location persist error:', err.message);
-    });
+    await userService.persistUserLocation(userId, lat, lon);
     await redis.redisRefreshTtl(userId);
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {

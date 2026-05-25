@@ -462,12 +462,32 @@ async function patchMe(req, res) {
 
 async function updateDiscoverable(req, res) {
   const user = req.user;
-  const { isDiscoverable } = req.body;
+  const { isDiscoverable, latitude, longitude } = req.body;
   if (typeof isDiscoverable !== 'boolean') {
     return res.status(400).json({ error: 'isDiscoverable must be a boolean' });
   }
+
+  const latRaw = latitude != null ? parseFloat(latitude) : null;
+  const lonRaw = longitude != null ? parseFloat(longitude) : null;
+  const hasCoords =
+    latRaw != null &&
+    lonRaw != null &&
+    Number.isFinite(latRaw) &&
+    Number.isFinite(lonRaw) &&
+    latRaw !== 0 &&
+    lonRaw !== 0;
+
   try {
-    await userService.updateIsDiscoverable(user.id, isDiscoverable);
+    if (isDiscoverable && hasCoords) {
+      await userService.setDiscoverableWithLocation(user.id, true, latRaw, lonRaw);
+    } else {
+      await userService.setDiscoverableWithLocation(
+        user.id,
+        isDiscoverable,
+        hasCoords ? latRaw : null,
+        hasCoords ? lonRaw : null
+      );
+    }
     const merged = await userService.getMergedUserForAuth(user.id, user);
     const token = signToken({ userId: user.id, user: merged });
     res.json({ token, user: merged });
@@ -485,8 +505,15 @@ async function updateDiscoverable(req, res) {
 async function updateLocation(req, res) {
   const lat = parseFloat(req.body?.latitude);
   const lon = parseFloat(req.body?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return res.status(400).json({ error: 'latitude and longitude are required numbers' });
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lon) ||
+    lat === 0 ||
+    lon === 0 ||
+    Math.abs(lat) > 90 ||
+    Math.abs(lon) > 180
+  ) {
+    return res.status(400).json({ error: 'Valid latitude and longitude are required' });
   }
 
   const user = req.user;
@@ -496,6 +523,7 @@ async function updateLocation(req, res) {
       return res.status(403).json({ error: 'Enable discoverability to update location' });
     }
     await userService.persistUserLocation(user.id, lat, lon);
+    console.log('[profile] location updated', { userId: user.id, lat, lon });
     res.json({ success: true, lastSeenAt: new Date().toISOString() });
   } catch (err) {
     console.error('[profile] updateLocation error:', err.message);

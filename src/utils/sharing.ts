@@ -33,6 +33,7 @@ import { apiPost, apiGet, apiPatch } from '../api/client';
 const HEARTBEAT_FG_MS   = 3_000;    // foreground: heartbeat every 3 s
 const HEARTBEAT_BG_MS   = 300_000;  // background: location persist every 5 min
 const POLL_FG_MS        = 5_000;    // foreground: nearby poll every 5 s
+const LOCATION_REFRESH_MS = 60_000; // keep last_seen_at fresh while discoverable
 const MAX_LOGS          = 50;
 
 // localStorage keys
@@ -142,6 +143,7 @@ function addLog(msg: string) {
 let _location:            { lat: number; lng: number } | null = null;
 let _heartbeatTimer:      ReturnType<typeof setInterval> | null = null;
 let _pollTimer:           ReturnType<typeof setInterval> | null = null;
+let _locationRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let _watchId:             string | null = null;        // watchPosition ID (background)
 let _fgWatchId:          string | null = null;        // foreground GPS watch — keeps _location live
 let _lastHeartbeatTime    = 0;                         // ms since epoch of last heartbeat
@@ -235,11 +237,34 @@ function userFacingSharingError(status: number, body?: { error?: string }): stri
   return 'Unable to update discoverability. Please try again.';
 }
 
+function isValidGpsCoord(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat !== 0 &&
+    lng !== 0 &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
+}
+
 async function persistDiscoverablePreference(
-  isDiscoverable: boolean
+  isDiscoverable: boolean,
+  location?: { lat: number; lng: number } | null
 ): Promise<{ user: AuthUser; token: string } | null> {
   if (!hasNonDemoSessionReady()) return null;
-  const res = await apiPatch('/profile/discoverable', { isDiscoverable });
+
+  const payload: Record<string, unknown> = { isDiscoverable };
+  if (isDiscoverable && location && isValidGpsCoord(location.lat, location.lng)) {
+    payload.latitude = location.lat;
+    payload.longitude = location.lng;
+    console.log('[Sharing] PATCH /profile/discoverable with GPS', {
+      lat: location.lat,
+      lng: location.lng,
+    });
+  }
+
+  const res = await apiPatch('/profile/discoverable', payload);
   const body = (await res.json().catch(() => ({}))) as {
     error?: string;
     user?: AuthUser;
@@ -264,9 +289,17 @@ export function setCachedDiscoverablePreference(isDiscoverable: boolean, user?: 
 async function persistDiscoverableLocationToDb(reason: string): Promise<void> {
   if (!_cachedDiscoverable || !hasNonDemoSessionReady()) return;
   const loc = _location ?? (await getPosition(true));
-  if (!loc) return;
+  if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
+    console.warn('[Sharing] skip PATCH /profile/location — invalid GPS', { reason, loc });
+    return;
+  }
   _location = loc;
   setState({ currentLocation: loc });
+  console.log('[Sharing] PATCH /profile/location', {
+    reason,
+    lat: loc.lat,
+    lng: loc.lng,
+  });
   try {
     const res = await apiPatch('/profile/location', {
       latitude: loc.lat,
@@ -310,13 +343,19 @@ function startForegroundIntervals() {
   clearForegroundIntervals();
   _heartbeatTimer = setInterval(() => { void doHeartbeat(); }, HEARTBEAT_FG_MS);
   _pollTimer      = setInterval(() => { void doNearbyPoll(); }, POLL_FG_MS);
+  _locationRefreshTimer = setInterval(() => {
+    if (state.isSharing && _cachedDiscoverable) {
+      void persistDiscoverableLocationToDb('interval 60s');
+    }
+  }, LOCATION_REFRESH_MS);
   setState({ heartbeatIntervalMs: HEARTBEAT_FG_MS });
-  addLog(`intervals: heartbeat=${HEARTBEAT_FG_MS / 1000}s  poll=${POLL_FG_MS / 1000}s`);
+  addLog(`intervals: heartbeat=${HEARTBEAT_FG_MS / 1000}s  poll=${POLL_FG_MS / 1000}s  location=${LOCATION_REFRESH_MS / 1000}s`);
 }
 
 function clearForegroundIntervals() {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
   if (_pollTimer)      { clearInterval(_pollTimer);      _pollTimer      = null; }
+  if (_locationRefreshTimer) { clearInterval(_locationRefreshTimer); _locationRefreshTimer = null; }
   stopForegroundWatch();
 }
 
@@ -703,10 +742,21 @@ export async function startSharing(
     }
 
     const loc = await getPosition(false);
-    if (!loc) {
+    if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
       const msg = 'Could not determine your location. Please try again.';
       setState({ error: msg, isSharing: false });
       return { ok: false, error: msg };
+    }
+
+    _location = loc;
+    setState({ currentLocation: loc });
+
+    let sessionUpdate: { user: AuthUser; token: string } | null = null;
+    if (!options.skipPersist) {
+      sessionUpdate = await persistDiscoverablePreference(true, loc);
+      await persistDiscoverableLocationToDb('after discoverable toggle');
+    } else {
+      await persistDiscoverableLocationToDb('auto-resume skipPersist');
     }
 
     let res: Response;
@@ -746,11 +796,6 @@ export async function startSharing(
 
     startForegroundIntervals();
     void doNearbyPoll();
-
-    let sessionUpdate: { user: AuthUser; token: string } | null = null;
-    if (!options.skipPersist) {
-      sessionUpdate = await persistDiscoverablePreference(true);
-    }
 
     addLog('startSharing: active ✓');
     return {

@@ -8,6 +8,7 @@
  * (See server/migrations/008_graduation_year.sql)
  */
 const db = require('./db');
+const { getPool } = db;
 const {
   resolveDisplayBio,
   bioProfileFromRow,
@@ -285,9 +286,76 @@ async function updateIsDiscoverable(linkedinSubjectId, isDiscoverable) {
   );
 }
 
+/**
+ * Atomically set discoverable flag and optional location (profiles table — joined to users).
+ */
+async function setDiscoverableWithLocation(linkedinSubjectId, isDiscoverable, latitude, longitude) {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    if (isDiscoverable) {
+      const hasCoords =
+        latitude != null &&
+        longitude != null &&
+        Number.isFinite(Number(latitude)) &&
+        Number.isFinite(Number(longitude)) &&
+        Number(latitude) !== 0 &&
+        Number(longitude) !== 0;
+      if (hasCoords) {
+        const res = await client.query(
+          `UPDATE profiles p
+           SET is_discoverable = true,
+               last_latitude = $2,
+               last_longitude = $3,
+               last_seen_at = NOW(),
+               updated_at = NOW()
+           FROM users u
+           WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
+          [linkedinSubjectId, Number(latitude), Number(longitude)]
+        );
+        console.log('[discoverable] set true + location', {
+          linkedinSubjectId,
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+          rowCount: res.rowCount,
+        });
+      } else {
+        const res = await client.query(
+          `UPDATE profiles p
+           SET is_discoverable = true,
+               last_seen_at = NOW(),
+               updated_at = NOW()
+           FROM users u
+           WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
+          [linkedinSubjectId]
+        );
+        console.log('[discoverable] set true (no coords)', {
+          linkedinSubjectId,
+          rowCount: res.rowCount,
+        });
+      }
+    } else {
+      const res = await client.query(
+        `UPDATE profiles p
+         SET is_discoverable = false, updated_at = NOW()
+         FROM users u
+         WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
+        [linkedinSubjectId]
+      );
+      console.log('[discoverable] set false', { linkedinSubjectId, rowCount: res.rowCount });
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /** Persist last known location for discoverable users (Neon source of truth). */
 async function persistUserLocation(linkedinSubjectId, latitude, longitude) {
-  await db.query(
+  const res = await db.query(
     `UPDATE profiles p
      SET last_latitude = $2,
          last_longitude = $3,
@@ -297,6 +365,9 @@ async function persistUserLocation(linkedinSubjectId, latitude, longitude) {
      WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
     [linkedinSubjectId, latitude, longitude]
   );
+  if (res.rowCount === 0) {
+    console.warn('[location] persistUserLocation: no profile row updated', { linkedinSubjectId });
+  }
 }
 
 /** Refresh last_seen_at without moving (keepalive / foreground ping). */
@@ -313,10 +384,48 @@ async function touchUserLastSeen(linkedinSubjectId) {
 }
 
 const DISCOVERY_MAX_AGE_HOURS = 24;
+const DEFAULT_DISCOVERY_RADIUS_METERS = 152.4;
+
+function haversineSql(latParam, lngParam) {
+  return `(6371000 * acos(LEAST(1.0, GREATEST(-1.0,
+    cos(radians(${latParam}::float8)) * cos(radians(p.last_latitude::float8)) *
+    cos(radians(p.last_longitude::float8) - radians(${lngParam}::float8)) +
+    sin(radians(${latParam}::float8)) * sin(radians(p.last_latitude::float8))
+  ))))`;
+}
+
+/** Aggregate counts for /debug/nearby and pipeline logging. */
+async function getDiscoveryPipelineStats(latitude, longitude, radiusMeters, excludeLinkedinSubjectId) {
+  const summaryRes = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE p.is_discoverable = true)::int AS total_discoverable,
+       COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_latitude IS NOT NULL)::int AS with_location,
+       COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_seen_at > NOW() - INTERVAL '24 hours')::int AS recent_24h
+     FROM profiles p`
+  );
+  const distExpr = haversineSql('$1', '$2');
+  const withinRes = await db.query(
+    `SELECT COUNT(*)::int AS within_radius
+     FROM profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.is_discoverable = true
+       AND p.last_latitude IS NOT NULL
+       AND p.last_longitude IS NOT NULL
+       AND p.last_seen_at > NOW() - INTERVAL '24 hours'
+       AND u.linkedin_subject_id != $3
+       AND ${distExpr} < $4`,
+    [latitude, longitude, excludeLinkedinSubjectId, radiusMeters]
+  );
+  return {
+    total_discoverable: summaryRes.rows[0]?.total_discoverable ?? 0,
+    with_location: summaryRes.rows[0]?.with_location ?? 0,
+    recent_24h: summaryRes.rows[0]?.recent_24h ?? 0,
+    within_radius: withinRes.rows[0]?.within_radius ?? 0,
+  };
+}
 
 /**
- * Nearby discoverable users from Neon (not Redis).
- * Visible when is_discoverable = true, coords set, last_seen within 24h, within radius.
+ * Nearby discoverable users from Neon (profiles + users join).
  */
 async function getNearbyDiscoverableUsers(
   latitude,
@@ -325,6 +434,30 @@ async function getNearbyDiscoverableUsers(
   excludeLinkedinSubjectId,
   limit = 50
 ) {
+  const radius = Number.isFinite(radiusMeters) ? radiusMeters : DEFAULT_DISCOVERY_RADIUS_METERS;
+
+  console.log('[nearby] query start', {
+    latitude,
+    longitude,
+    excludeLinkedinSubjectId,
+    radiusMeters: radius,
+  });
+
+  let pipeline;
+  try {
+    pipeline = await getDiscoveryPipelineStats(
+      latitude,
+      longitude,
+      radius,
+      excludeLinkedinSubjectId
+    );
+    console.log('[nearby] pipeline stats (profiles table)', pipeline);
+  } catch (err) {
+    console.error('[nearby] pipeline stats error:', err.message);
+    pipeline = null;
+  }
+
+  const distExpr = haversineSql('$1', '$2');
   const res = await db.query(
     `SELECT u.linkedin_subject_id,
             u.id AS user_uuid,
@@ -345,29 +478,25 @@ async function getNearbyDiscoverableUsers(
             p.graduation_year,
             p.last_latitude,
             p.last_longitude,
-            sub.distance_meters
-     FROM (
-       SELECT p2.user_id,
-              (6371000 * acos(LEAST(1.0, GREATEST(-1.0,
-                cos(radians($1::float8)) * cos(radians(p2.last_latitude::float8)) *
-                cos(radians(p2.last_longitude::float8) - radians($2::float8)) +
-                sin(radians($1::float8)) * sin(radians(p2.last_latitude::float8))
-              )))) AS distance_meters
-       FROM profiles p2
-       JOIN users u2 ON u2.id = p2.user_id
-       WHERE p2.is_discoverable = true
-         AND p2.last_latitude IS NOT NULL
-         AND p2.last_longitude IS NOT NULL
-         AND p2.last_seen_at >= NOW() - ($5::int * INTERVAL '1 hour')
-         AND u2.linkedin_subject_id != $3
-     ) sub
-     JOIN profiles p ON p.user_id = sub.user_id
+            ${distExpr} AS distance_meters
+     FROM profiles p
      JOIN users u ON u.id = p.user_id
-     WHERE sub.distance_meters <= $4
-     ORDER BY sub.distance_meters ASC
-     LIMIT $6`,
-    [latitude, longitude, excludeLinkedinSubjectId, radiusMeters, DISCOVERY_MAX_AGE_HOURS, limit]
+     WHERE p.is_discoverable = true
+       AND p.last_latitude IS NOT NULL
+       AND p.last_longitude IS NOT NULL
+       AND p.last_seen_at > NOW() - INTERVAL '24 hours'
+       AND u.linkedin_subject_id != $3
+       AND ${distExpr} < $4
+     ORDER BY distance_meters ASC
+     LIMIT $5`,
+    [latitude, longitude, excludeLinkedinSubjectId, radius, limit]
   );
+
+  console.log('[nearby] query result', {
+    matchCount: res.rows.length,
+    pipeline,
+  });
+
   return res.rows;
 }
 
@@ -423,8 +552,10 @@ module.exports = {
   bioForProfileRow,
   updateProfileMePatch,
   updateIsDiscoverable,
+  setDiscoverableWithLocation,
   persistUserLocation,
   touchUserLastSeen,
+  getDiscoveryPipelineStats,
   getNearbyDiscoverableUsers,
   listSavedProfilesForSaver,
   insertSavedProfile,
