@@ -121,6 +121,20 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[startup] Server listening on http://0.0.0.0:${PORT}`);
+async function start() {
+  try {
+    await db.runMigrations();
+  } catch (err) {
+    console.error('[startup] migration failed:', err.message);
+    process.exit(1);
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[startup] Server listening on http://0.0.0.0:${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('[startup] FATAL:', err.message);
+  process.exit(1);
 });

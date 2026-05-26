@@ -1,5 +1,6 @@
 const userService = require('../services/userService');
 const config = require('../config');
+const db = require('../services/db');
 
 /**
  * GET /debug/nearby
@@ -25,4 +26,24 @@ async function debugNearby(req, res) {
   }
 }
 
-module.exports = { debugNearby };
+/**
+ * GET /debug/discovery-state
+ * Quick DB health check — discoverable users with location data.
+ */
+async function discoveryState(req, res) {
+  try {
+    const result = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE is_discoverable = true)::int AS discoverable,
+        COUNT(*) FILTER (WHERE last_latitude IS NOT NULL)::int AS has_location,
+        COUNT(*) FILTER (WHERE last_seen_at > NOW() - INTERVAL '24 hours')::int AS recent
+      FROM profiles
+    `);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('[debug] discovery-state error:', err.message);
+    res.status(500).json({ error: err.message || 'Discovery state query failed' });
+  }
+}
+
+module.exports = { debugNearby, discoveryState };

@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { debugNearby } = require('../controllers/debug');
+const { debugNearby, discoveryState } = require('../controllers/debug');
 
 router.get('/nearby', debugNearby);
+router.get('/discovery-state', discoveryState);
 
 module.exports = router;

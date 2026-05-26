@@ -47,4 +47,20 @@ async function healthCheck() {
   }
 }
 
-module.exports = { query, getPool, healthCheck };
+/** Idempotent schema patches applied on every deploy. */
+async function runMigrations() {
+  await query(
+    `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_discoverable BOOLEAN NOT NULL DEFAULT false`
+  );
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_latitude DOUBLE PRECISION`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_longitude DOUBLE PRECISION`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`);
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_profiles_discoverable_seen
+      ON profiles (is_discoverable, last_seen_at DESC)
+      WHERE is_discoverable = true AND last_latitude IS NOT NULL
+  `);
+  console.log('[startup] migrations applied');
+}
+
+module.exports = { query, getPool, healthCheck, runMigrations };

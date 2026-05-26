@@ -527,7 +527,7 @@ async function doHeartbeat() {
   }
   const loc = _location ?? (await getPosition(true));
   if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
-    addLog('heartbeat: no location');
+    addLog('heartbeat: no GPS');
     return;
   }
   _location = loc;
@@ -558,7 +558,7 @@ async function doNearbyPoll() {
   }
   const loc = _location ?? (await getPosition(false));
   if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
-    addLog('poll: no location');
+    addLog('poll: no GPS');
     return;
   }
   _location = loc;

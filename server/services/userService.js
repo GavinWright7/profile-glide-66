@@ -365,8 +365,17 @@ async function persistUserLocation(linkedinSubjectId, latitude, longitude) {
      WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
     [linkedinSubjectId, latitude, longitude]
   );
+  console.log('[persistUserLocation]', {
+    linkedinSubjectId,
+    latitude,
+    longitude,
+    rowCount: res.rowCount,
+  });
   if (res.rowCount === 0) {
-    console.warn('[location] persistUserLocation: no profile row updated', { linkedinSubjectId });
+    console.error(
+      '[CRITICAL] persistUserLocation wrote 0 rows — profile or user row missing for',
+      linkedinSubjectId
+    );
   }
   return res.rowCount;
 }
