@@ -30,7 +30,7 @@ import { apiPost, apiGet, apiPatch } from '../api/client';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const HEARTBEAT_FG_MS   = 3_000;    // foreground: heartbeat every 3 s
+const HEARTBEAT_FG_MS   = 5_000;    // foreground: heartbeat every 5 s (debug interval)
 const HEARTBEAT_BG_MS   = 300_000;  // background: location persist every 5 min
 const POLL_FG_MS        = 5_000;    // foreground: nearby poll every 5 s
 const LOCATION_REFRESH_MS = 60_000; // keep last_seen_at fresh while discoverable
@@ -525,30 +525,24 @@ async function doHeartbeat() {
     forceHaltSharingLoops();
     return;
   }
-  const loc = await getPosition(true);
-  if (!loc) { addLog('heartbeat: no location — skipping'); return; }
-  const isStationary = _lastSentLocation ? metersBetween(_lastSentLocation, loc) < 2 : false;
+  const loc = _location ?? (await getPosition(true));
+  if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
+    addLog('heartbeat: no location');
+    return;
+  }
+  _location = loc;
+  setState({ currentLocation: loc });
   try {
-    if (isStationary) {
-      const res = await apiPost('/sharing/heartbeat/keepalive', {});
-      if (res.ok) {
-        _lastHeartbeatTime = Date.now();
-        setState({ lastHeartbeatAt: new Date() });
-      } else {
-        addLog(`heartbeat: server ${res.status}`);
-      }
+    const res = await apiPost('/sharing/heartbeat', {
+      latitude: loc.lat,
+      longitude: loc.lng,
+    });
+    if (res.ok) {
+      _lastSentLocation = loc;
+      _lastHeartbeatTime = Date.now();
+      setState({ lastHeartbeatAt: new Date() });
     } else {
-      const res = await apiPost('/sharing/heartbeat', {
-        latitude:  loc.lat,
-        longitude: loc.lng,
-      });
-      if (res.ok) {
-        _lastSentLocation = loc;
-        _lastHeartbeatTime = Date.now();
-        setState({ lastHeartbeatAt: new Date() });
-      } else {
-        addLog(`heartbeat: server ${res.status}`);
-      }
+      addLog(`heartbeat: server ${res.status}`);
     }
   } catch (err) {
     addLog(`heartbeat error: ${err instanceof Error ? err.message : String(err)}`);
@@ -562,8 +556,13 @@ async function doNearbyPoll() {
     forceHaltSharingLoops();
     return;
   }
-  const loc = _location;
-  if (!loc) return;
+  const loc = _location ?? (await getPosition(false));
+  if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
+    addLog('poll: no location');
+    return;
+  }
+  _location = loc;
+  setState({ currentLocation: loc });
   const params: Record<string, string> = {
     latitude:  String(loc.lat),
     longitude: String(loc.lng),

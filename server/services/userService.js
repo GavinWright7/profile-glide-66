@@ -368,6 +368,7 @@ async function persistUserLocation(linkedinSubjectId, latitude, longitude) {
   if (res.rowCount === 0) {
     console.warn('[location] persistUserLocation: no profile row updated', { linkedinSubjectId });
   }
+  return res.rowCount;
 }
 
 /** Refresh last_seen_at without moving (keepalive / foreground ping). */

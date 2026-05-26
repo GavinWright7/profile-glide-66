@@ -167,8 +167,15 @@ async function heartbeat(req, res) {
   try {
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
-    await userService.persistUserLocation(userId, lat, lon);
+    const rowCount = await userService.persistUserLocation(userId, lat, lon);
+    await userService.touchUserLastSeen(userId);
     await redis.redisRefreshTtl(userId);
+    console.log('[heartbeat]', {
+      linkedinSubjectId: userId,
+      latitude: lat,
+      longitude: lon,
+      rowCount,
+    });
     res.json({ success: true, lastHeartbeatAt: new Date().toISOString() });
   } catch (err) {
     console.error('[sharing] heartbeat error:', err.message);
@@ -229,7 +236,6 @@ async function getNearby(req, res) {
   const lat = parseCoord(req.query.latitude);
   const lon = parseCoord(req.query.longitude);
   const sort = (req.query.sort || 'distance').toLowerCase();
-  const radiusParam = parseFloat(req.query.radiusMeters);
   const filterIndustries = req.query.filterIndustries
     ? req.query.filterIndustries.split(',').map((s) => s.trim()).filter(Boolean)
     : [];
@@ -249,11 +255,21 @@ async function getNearby(req, res) {
     const isPremium = cachedRequesterProfile?.isPremium ?? await premiumService.hasPremiumAccess(userId).catch(() => false);
 
     const maxRadius = isPremium ? MAX_DISTANCE_METERS_PREMIUM : MAX_DISTANCE_METERS;
-    let radiusMeters = Number.isFinite(radiusParam) ? radiusParam : maxRadius;
+    const radiusFromQuery = parseFloat(req.query.radiusMeters);
+    let radiusMeters = Number.isFinite(radiusFromQuery) && radiusFromQuery > 0
+      ? radiusFromQuery
+      : MAX_DISTANCE_METERS;
     if (radiusMeters > maxRadius) {
       return res.status(403).json({ error: 'Premium required for expanded range', requiresPremium: true });
     }
     radiusMeters = Math.min(radiusMeters, maxRadius);
+
+    console.log('[nearby] request', {
+      linkedinSubjectId: userId,
+      latitude: lat,
+      longitude: lon,
+      radiusMeters,
+    });
 
     const validSort = ['distance', 'relevance'].includes(sort) ? sort : 'distance';
     if (validSort === 'relevance' && !isPremium) {
@@ -272,6 +288,12 @@ async function getNearby(req, res) {
       userId,
       50
     );
+
+    console.log('[nearby] result', {
+      linkedinSubjectId: userId,
+      rawCount: dbRows.length,
+      radiusMeters,
+    });
 
     if (dbRows.length === 0) {
       return res.json({ users: [], count: 0 });
@@ -331,6 +353,11 @@ async function getNearby(req, res) {
     }
 
     users = users.filter((u) => String(u.fullName || '').trim().length > 0);
+
+    console.log('[nearby] returning', {
+      linkedinSubjectId: userId,
+      count: users.length,
+    });
 
     res.json({ users, count: users.length });
   } catch (err) {
