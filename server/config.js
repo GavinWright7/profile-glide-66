@@ -43,6 +43,8 @@ module.exports = {
   DATABASE_URL: process.env.DATABASE_URL,
   REDIS_URL: process.env.REDIS_URL,
   JWT_SECRET: process.env.JWT_SECRET,
+  /** Admin map dashboard — never hardcode; set in Railway Variables and local server/.env */
+  ADMIN_SECRET_KEY: process.env.ADMIN_SECRET_KEY?.trim(),
 
   LINKEDIN_CLIENT_ID: process.env.LINKEDIN_CLIENT_ID?.trim(),
   LINKEDIN_CLIENT_SECRET: process.env.LINKEDIN_CLIENT_SECRET?.trim(),

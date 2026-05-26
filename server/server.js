@@ -29,7 +29,7 @@ app.set('trust proxy', 1);
 const corsOptions = {
   origin: true,
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id', 'X-Requested-With', 'x-admin-key'],
   credentials: true,
   optionsSuccessStatus: 204,
   maxAge: 86400,
@@ -57,6 +57,7 @@ const envKeys = [
   'JWT_SECRET',
   'DATABASE_URL',
   'REDIS_URL',
+  'ADMIN_SECRET_KEY',
 ];
 config.warnEnv(envKeys);
 
@@ -65,6 +66,7 @@ const safeConfig = {
   NODE_ENV,
   LINKEDIN_REDIRECT_URI: config.LINKEDIN_REDIRECT_URI ? '(set)' : '(missing)',
   JWT_SECRET: config.JWT_SECRET ? '(set)' : '(missing)',
+  ADMIN_SECRET_KEY: config.ADMIN_SECRET_KEY ? '(set)' : '(missing)',
   DATABASE_URL: config.DATABASE_URL ? '(set)' : '(missing)',
   REDIS_URL: config.REDIS_URL
     ? (config.REDIS_URL.includes('localhost') ? 'localhost (use Railway Redis URL in production)' : '(set)')
@@ -108,6 +110,7 @@ const interactionsRoutes = require('./routes/interactions');
 const premiumRoutes = require('./routes/premium');
 const savedProfilesRoutes = require('./routes/savedProfiles');
 const debugRoutes = require('./routes/debug');
+const adminRouter = require('./routes/admin');
 
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
@@ -116,6 +119,7 @@ app.use('/debug', debugRoutes);
 app.use('/interactions', interactionsRoutes);
 app.use('/premium', premiumRoutes);
 app.use('/saved-profiles', savedProfilesRoutes);
+app.use('/admin', adminRouter);
 
 app.use((err, _req, res, _next) => {
   console.error('[error]', err.message);
