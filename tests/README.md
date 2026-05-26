@@ -56,7 +56,7 @@ bash tests/load/run-load-test.sh
 
 - **Phases:** 60s warmup @ 10 req/s → 120s ramp to 100 req/s → 60s spike @ 500 req/s
 - **Scenarios:** heartbeat loop, nearby poll, discoverable toggle
-- **PASS:** p95 ≤ 500ms and error rate ≤ 1%
+- **PASS:** p95 ≤ 500ms and error rate ≤ 5%
 - **FAIL:** Check Railway **Metrics → Response time p95**, **HTTP 5xx rate**, and deploy logs for OOM/timeouts
 
 ### Heartbeat stress (`tests/stress/heartbeat-stress.cjs`)

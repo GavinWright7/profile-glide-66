@@ -14,6 +14,8 @@ const WAIT_MS = Number(
   process.env.LOADTEST_PERSISTENCE_WAIT_MS || 10 * 60 * 1000
 );
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function main() {
   requireEnv();
   const token = process.env.LOADTEST_JWT_TOKEN;
@@ -26,6 +28,9 @@ async function main() {
   console.log(`Target: ${process.env.LOADTEST_BASE_URL}`);
   console.log(`Idle wait: ${formatDuration(WAIT_MS)}`);
   console.log('');
+
+  console.log('Waiting 65s for rate limiter cooldown from previous tests...');
+  await sleep(65000);
 
   const toggleOn = await request('PATCH', '/profile/discoverable', {
     token,

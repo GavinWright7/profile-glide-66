@@ -11,6 +11,8 @@ const {
   printFailure,
 } = require('../lib/common.cjs');
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function main() {
   requireEnv();
   const token = process.env.LOADTEST_JWT_TOKEN;
@@ -23,6 +25,9 @@ async function main() {
   console.log(`DB connection pool test (${concurrency} concurrent nearby queries)`);
   console.log(`Target: ${process.env.LOADTEST_BASE_URL}`);
   console.log('');
+
+  console.log('Waiting 65s for rate limiter cooldown from previous tests...');
+  await sleep(65000);
 
   const nearbyPromises = Array.from({ length: concurrency }, (_, i) =>
     request('GET', '/sharing/nearby', {

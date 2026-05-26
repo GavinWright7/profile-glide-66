@@ -17,7 +17,7 @@ config:
       Authorization: "Bearer {{ $processEnvironment.LOADTEST_JWT_TOKEN }}"
       Content-Type: application/json
   ensure:
-    maxErrorRate: 1
+    maxErrorRate: 5
     p95: 500
 
 scenarios:

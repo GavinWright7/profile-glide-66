@@ -15,9 +15,9 @@ function getPool() {
     pool = new Pool({
       connectionString: config.DATABASE_URL,
       ssl: config.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
-      max: 10,
+      max: 20,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 8000,
     });
   }
   return pool;
