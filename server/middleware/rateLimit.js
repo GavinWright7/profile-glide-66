@@ -13,22 +13,36 @@ function logSharingStartKey(req, key) {
   }
 }
 
-function presenceKeyGenerator(req) {
+/** Key per authenticated user — never falls back to IP (requireAuth runs first). */
+function userIdKeyGenerator(req) {
+  if (req.userId) return req.userId;
   const headerUserIdRaw = req.headers['x-user-id'];
   const headerUserId = Array.isArray(headerUserIdRaw)
     ? headerUserIdRaw[0]
     : headerUserIdRaw;
-  const key = req.userId || headerUserId || req.ip;
+  const key = headerUserId || 'unauthenticated';
   logSharingStartKey(req, key);
   return key;
 }
 
 const skipOptions = (req) => req.method === 'OPTIONS';
 
+/** Automatic heartbeats — app sends ~20/min; 60/min gives headroom for retries/reconnects. */
+const heartbeatRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: userIdKeyGenerator,
+  skip: skipOptions,
+  message: { error: 'Too many heartbeat updates. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/** User-triggered presence (start/stop sharing) — strict limit. */
 const presenceRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
-  keyGenerator: presenceKeyGenerator,
+  max: 10,
+  keyGenerator: userIdKeyGenerator,
   skip: skipOptions,
   message: { error: 'Too many presence updates. Please slow down.' },
   standardHeaders: true,
@@ -38,7 +52,7 @@ const presenceRateLimiter = rateLimit({
 const nearbyRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 40,
-  keyGenerator: (req) => req.userId || req.ip,
+  keyGenerator: userIdKeyGenerator,
   skip: skipOptions,
   message: { error: 'Too many nearby requests. Please slow down.' },
   standardHeaders: true,
@@ -48,7 +62,7 @@ const nearbyRateLimiter = rateLimit({
 const discoverableRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.userId || req.ip,
+  keyGenerator: userIdKeyGenerator,
   skip: skipOptions,
   message: {
     error: 'Please wait a moment before changing discoverability again.',
@@ -57,4 +71,9 @@ const discoverableRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { presenceRateLimiter, nearbyRateLimiter, discoverableRateLimiter };
+module.exports = {
+  heartbeatRateLimiter,
+  presenceRateLimiter,
+  nearbyRateLimiter,
+  discoverableRateLimiter,
+};

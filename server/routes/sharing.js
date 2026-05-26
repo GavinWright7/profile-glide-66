@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { presenceRateLimiter, nearbyRateLimiter } = require('../middleware/rateLimit');
+const {
+  heartbeatRateLimiter,
+  presenceRateLimiter,
+  nearbyRateLimiter,
+} = require('../middleware/rateLimit');
 const {
   startSharing,
   heartbeat,
@@ -27,8 +31,8 @@ function asyncHandler(fn) {
 
 // All sharing routes require a valid JWT
 router.post('/start', requireAuth, presenceRateLimiter, asyncHandler(startSharing));
-router.post('/heartbeat', requireAuth, presenceRateLimiter, asyncHandler(heartbeat));
-router.post('/heartbeat/keepalive', requireAuth, presenceRateLimiter, asyncHandler(keepalive));
+router.post('/heartbeat', requireAuth, heartbeatRateLimiter, asyncHandler(heartbeat));
+router.post('/heartbeat/keepalive', requireAuth, heartbeatRateLimiter, asyncHandler(keepalive));
 router.post('/stop', requireAuth, presenceRateLimiter, asyncHandler(stopSharing));
 router.get('/nearby', requireAuth, nearbyRateLimiter, asyncHandler(getNearby));
 
