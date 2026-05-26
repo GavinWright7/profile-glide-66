@@ -145,7 +145,7 @@ export function FindPersonRadarScreen({
     (shouldSimulate && simulatedLocation ? simulatedLocation : null) ??
     sharing.currentLocation ??
     myLocationProp ??
-    { lat: 0, lng: 0 };
+    null;
 
   const liveDistanceMeters = localDistance ?? target?.distanceMeters ?? 0;
 

@@ -237,6 +237,18 @@ function userFacingSharingError(status: number, body?: { error?: string }): stri
   return 'Unable to update discoverability. Please try again.';
 }
 
+/** iOS Simulator default + removed SF fallback — never send to the backend. */
+const KNOWN_FAKE_GPS: ReadonlyArray<{ lat: number; lng: number }> = [
+  { lat: 37.785834, lng: -122.406417 },
+  { lat: 37.7749, lng: -122.4194 },
+];
+
+function isKnownFakeGpsCoord(lat: number, lng: number): boolean {
+  return KNOWN_FAKE_GPS.some(
+    (c) => Math.abs(c.lat - lat) < 0.0001 && Math.abs(c.lng - lng) < 0.0001
+  );
+}
+
 function isValidGpsCoord(lat: number, lng: number): boolean {
   return (
     Number.isFinite(lat) &&
@@ -244,7 +256,8 @@ function isValidGpsCoord(lat: number, lng: number): boolean {
     lat !== 0 &&
     lng !== 0 &&
     Math.abs(lat) <= 90 &&
-    Math.abs(lng) <= 180
+    Math.abs(lng) <= 180 &&
+    !isKnownFakeGpsCoord(lat, lng)
   );
 }
 
@@ -288,7 +301,7 @@ export function setCachedDiscoverablePreference(isDiscoverable: boolean, user?: 
 
 async function persistDiscoverableLocationToDb(reason: string): Promise<void> {
   if (!_cachedDiscoverable || !hasNonDemoSessionReady()) return;
-  const loc = _location ?? (await getPosition(true));
+  const loc = await getPosition(true);
   if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
     console.warn('[Sharing] skip PATCH /profile/location — invalid GPS', { reason, loc });
     return;
@@ -376,6 +389,7 @@ async function startBackgroundWatch() {
       (pos, err) => {
         if (err || !pos) return;
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (!isValidGpsCoord(loc.lat, loc.lng)) return;
         _location = loc;
         setState({ currentLocation: loc });
 
@@ -411,6 +425,7 @@ async function startForegroundWatch() {
       (pos, err) => {
         if (err || !pos) return;
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (!isValidGpsCoord(loc.lat, loc.lng)) return;
         _location = loc;
         setState({ currentLocation: loc });
       }
@@ -458,8 +473,13 @@ async function getPosition(highAccuracy = true): Promise<{ lat: number; lng: num
     const pos = await Geolocation.getCurrentPosition({
       enableHighAccuracy: highAccuracy,
       timeout: highAccuracy ? 10000 : 3000,
+      maximumAge: 0,
     });
     const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if (!isValidGpsCoord(loc.lat, loc.lng)) {
+      addLog(`getPosition rejected: invalid or fake GPS (${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)})`);
+      return null;
+    }
     _location = loc;
     setState({ currentLocation: loc });
     return loc;
@@ -525,8 +545,8 @@ async function doHeartbeat() {
     forceHaltSharingLoops();
     return;
   }
-  const loc = _location ?? (await getPosition(true));
-  if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
+  const loc = await getPosition(true);
+  if (!loc) {
     addLog('heartbeat: no GPS');
     return;
   }
@@ -556,8 +576,8 @@ async function doNearbyPoll() {
     forceHaltSharingLoops();
     return;
   }
-  const loc = _location ?? (await getPosition(false));
-  if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
+  const loc = await getPosition(false);
+  if (!loc) {
     addLog('poll: no GPS');
     return;
   }

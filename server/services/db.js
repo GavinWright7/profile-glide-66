@@ -55,6 +55,15 @@ async function runMigrations() {
   await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_latitude DOUBLE PRECISION`);
   await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_longitude DOUBLE PRECISION`);
   await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`);
+  // Columns referenced by getNearbyDiscoverableUsers SELECT (idempotent)
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS interests TEXT[] DEFAULT '{}'`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio TEXT`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS career TEXT`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS current_job_title TEXT`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS current_company TEXT`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS alma_mater TEXT`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS past_companies TEXT[] DEFAULT '{}'`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS graduation_year TEXT`);
   await query(`
     CREATE INDEX IF NOT EXISTS idx_profiles_discoverable_seen
       ON profiles (is_discoverable, last_seen_at DESC)
