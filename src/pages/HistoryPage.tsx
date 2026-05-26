@@ -115,7 +115,7 @@ const HistoryPage = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full"
+                      className="w-full mt-4"
                       onClick={handleClearHistory}
                     >
                       Clear History
