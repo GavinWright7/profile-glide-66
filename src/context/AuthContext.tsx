@@ -24,7 +24,7 @@ import {
   BACKEND_URL,
 } from '../auth/authService';
 import { SESSION_EXPIRED_MESSAGE } from '../api/client';
-import { forceHaltSharingLoops, setCachedDiscoverablePreference } from '../utils/sharing';
+import { forceHaltSharingLoops, setCachedDiscoverablePreference, startAlwaysOnTracking } from '../utils/sharing';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -293,6 +293,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const isDemoUser = !!user && user.id === APPLE_TESTER_USER_ID;
+
+  useEffect(() => {
+    if (isAuthReady && user?.isDiscoverable) {
+      void startAlwaysOnTracking();
+    }
+  }, [isAuthReady, user?.isDiscoverable]);
 
   return (
     <AuthContext.Provider

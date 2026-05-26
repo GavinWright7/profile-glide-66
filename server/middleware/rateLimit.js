@@ -71,9 +71,21 @@ const discoverableRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+/** Background location PATCH — movement-based, higher ceiling than heartbeat. */
+const locationRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  keyGenerator: userIdKeyGenerator,
+  skip: skipOptions,
+  message: { error: 'Too many location updates. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 module.exports = {
   heartbeatRateLimiter,
   presenceRateLimiter,
   nearbyRateLimiter,
   discoverableRateLimiter,
+  locationRateLimiter,
 };

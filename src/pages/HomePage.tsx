@@ -4,7 +4,7 @@ import { Loader2, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
-import { setCachedDiscoverablePreference } from '../utils/sharing';
+import { setCachedDiscoverablePreference, startAlwaysOnTracking } from '../utils/sharing';
 
 const TOGGLE_DEBOUNCE_MS = 1000;
 
@@ -19,6 +19,9 @@ const HomePage = () => {
       setCachedDiscoverablePreference(user.isDiscoverable === true, user, token);
       if (user.isDiscoverable && !sharing.isSharing) {
         void sharing.tryAutoResume(user, token);
+      }
+      if (user.isDiscoverable) {
+        void startAlwaysOnTracking();
       }
     }
   }, [isAuthReady, user, token, sharing.isSharing, sharing.tryAutoResume]);

@@ -53,15 +53,16 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>AirLinks uses your local network to discover nearby professionals via MultipeerConnectivity.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>AirLinks uses your location in the background to keep you discoverable to nearby professionals while you use other apps. This only runs when "Stay discoverable in background" is enabled.</string>
+	<string>AirLinks updates your location in the background so nearby professionals can discover you even when the app is closed.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>AirLinks uses your location to keep you discoverable to nearby professionals, including when the app is in the background.</string>
+	<string>AirLinks needs your location at all times to keep you discoverable to nearby professionals.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>AirLinks uses your location to discover nearby professionals. Location is only accessed while Start Sharing is active.</string>
+	<string>AirLinks uses your location to show you nearby professionals.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

@@ -1,18 +1,29 @@
 import { motion } from 'framer-motion';
-import { Eye, Linkedin, LogOut, ChevronRight } from 'lucide-react';
+import { Eye, Linkedin, LogOut, ChevronRight, MapPin } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
 import { apiPut } from '../api/client';
 import { saveSession } from '../auth/authService';
+import {
+  isBackgroundLocationGranted,
+  setBackgroundLocationGranted,
+  startAlwaysOnTracking,
+  stopAlwaysOnTracking,
+} from '../utils/sharing';
 
 const SettingsPage = () => {
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [linkedinError, setLinkedinError] = useState<string | null>(null);
   const [linkedinSaving, setLinkedinSaving] = useState(false);
+  const [bgLocationEnabled, setBgLocationEnabled] = useState(isBackgroundLocationGranted);
+  const [bgLocationBusy, setBgLocationBusy] = useState(false);
   const navigate = useNavigate();
   const { user, token, updateSession, logout } = useAuth();
 
@@ -48,6 +59,31 @@ const SettingsPage = () => {
   const handleSignOut = () => {
     logout();
     navigate('/login', { replace: true });
+  };
+
+  const handleBackgroundLocationToggle = async (enabled: boolean) => {
+    setBgLocationBusy(true);
+    try {
+      if (enabled) {
+        if (Capacitor.isNativePlatform()) {
+          const perm = await Geolocation.requestPermissions({ permissions: ['location'] });
+          if (perm.location !== 'granted') {
+            setBgLocationEnabled(false);
+            setBackgroundLocationGranted(false);
+            return;
+          }
+        }
+        setBackgroundLocationGranted(true);
+        setBgLocationEnabled(true);
+        await startAlwaysOnTracking();
+      } else {
+        setBackgroundLocationGranted(false);
+        setBgLocationEnabled(false);
+        await stopAlwaysOnTracking();
+      }
+    } finally {
+      setBgLocationBusy(false);
+    }
   };
 
   return (
@@ -109,6 +145,26 @@ const SettingsPage = () => {
             >
               {linkedinSaving ? 'Saving…' : 'Save LinkedIn URL'}
             </Button>
+          </div>
+        </div>
+
+        <div className="glass-card p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <MapPin size={16} className="text-primary mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-foreground">Update location in background</p>
+                <Switch
+                  checked={bgLocationEnabled}
+                  disabled={bgLocationBusy}
+                  onCheckedChange={(checked) => void handleBackgroundLocationToggle(checked)}
+                  aria-label="Update location in background"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Keeps you discoverable when the app is closed.
+              </p>
+            </div>
           </div>
         </div>
 

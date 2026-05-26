@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { discoverableRateLimiter } = require('../middleware/rateLimit');
+const { discoverableRateLimiter, locationRateLimiter } = require('../middleware/rateLimit');
 const {
   updateLinkedInUrl,
   updateInterests,
@@ -30,7 +30,7 @@ router.get('/interests-options', getInterestsOptions);
 router.get('/me', requireAuth, asyncHandler(getMe));
 router.patch('/me', requireAuth, asyncHandler(patchMe));
 router.patch('/discoverable', requireAuth, discoverableRateLimiter, asyncHandler(updateDiscoverable));
-router.patch('/location', requireAuth, asyncHandler(updateLocation));
+router.patch('/location', requireAuth, locationRateLimiter, asyncHandler(updateLocation));
 router.put('/linkedin-url', requireAuth, asyncHandler(updateLinkedInUrl));
 router.put('/interests', requireAuth, asyncHandler(updateInterests));
 router.put('/professional-background', requireAuth, asyncHandler(updateProfessionalBackground));

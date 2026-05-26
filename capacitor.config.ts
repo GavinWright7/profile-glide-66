@@ -11,6 +11,19 @@ const config: CapacitorConfig = {
     contentInset: 'never',
     scrollEnabled: true,
   },
+  plugins: {
+    BackgroundGeolocation: {
+      backgroundMessage:
+        'AirLinks is updating your location so nearby professionals can find you.',
+      backgroundTitle: 'AirLinks Location Active',
+      requestPermissions: true,
+      stale: false,
+      distanceFilter: 10,
+    },
+    Geolocation: {
+      requestPermissions: true,
+    },
+  },
   // Deep link URL scheme (airlinks://) is registered natively:
   //   iOS  → ios/App/App/Info.plist  (CFBundleURLTypes → CFBundleURLSchemes)
   //   Android → android/app/src/main/AndroidManifest.xml (<intent-filter>)

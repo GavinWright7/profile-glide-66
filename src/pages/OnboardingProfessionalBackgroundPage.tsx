@@ -153,7 +153,7 @@ const OnboardingProfessionalBackgroundPage = () => {
       flushSync(() => {
         updateSession({ token: newToken, user: asUser });
       });
-      navigate('/', { replace: true });
+      navigate('/onboarding/background-location', { replace: true });
     } catch (err) {
       console.error(`${DIAG} failed`, err instanceof Error ? err.message : err);
       setError(err instanceof Error ? err.message : 'Failed to save');

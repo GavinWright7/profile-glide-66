@@ -24,6 +24,7 @@
 import { Geolocation }  from '@capacitor/geolocation';
 import { App }          from '@capacitor/app';
 import { Capacitor }    from '@capacitor/core';
+import { BackgroundGeolocation } from '../plugins/backgroundGeolocation';
 import { APPLE_TESTER_USER_ID, AUTH_401_EVENT, hasNonDemoSessionReady } from '../auth/authService';
 import type { AuthUser } from '../auth/authService';
 import { apiPost, apiGet, apiPatch } from '../api/client';
@@ -35,6 +36,8 @@ const HEARTBEAT_BG_MS   = 300_000;  // background: location persist every 5 min
 const POLL_FG_MS        = 5_000;    // foreground: nearby poll every 5 s
 const LOCATION_REFRESH_MS = 60_000; // keep last_seen_at fresh while discoverable
 const MAX_LOGS          = 50;
+
+export const BG_LOCATION_KEY = 'pg_bg_location_granted';
 
 // localStorage keys
 const SK_ON    = 'pg_sharing_on';
@@ -155,6 +158,7 @@ let _findPersonActive = false;
 let _cachedDiscoverable = false;
 let _resumeUser: AuthUser | null = null;
 let _resumeToken: string | null = null;
+let _bgWatcherId: string | null = null;
 
 // ── App lifecycle listener ───────────────────────────────────────────────────
 
@@ -259,6 +263,74 @@ function isValidGpsCoord(lat: number, lng: number): boolean {
     Math.abs(lng) <= 180 &&
     !isKnownFakeGpsCoord(lat, lng)
   );
+}
+
+export function isBackgroundLocationGranted(): boolean {
+  try {
+    return localStorage.getItem(BG_LOCATION_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setBackgroundLocationGranted(granted: boolean): void {
+  try {
+    localStorage.setItem(BG_LOCATION_KEY, granted ? 'true' : 'false');
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function stopAlwaysOnTracking(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  if (!_bgWatcherId) return;
+  try {
+    await BackgroundGeolocation.removeWatcher({ id: _bgWatcherId });
+    console.log('[BGLocation] watcher removed');
+  } catch (err) {
+    console.warn('[BGLocation] removeWatcher failed', err);
+  } finally {
+    _bgWatcherId = null;
+  }
+}
+
+export async function startAlwaysOnTracking(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  if (!isBackgroundLocationGranted()) return;
+  if (_bgWatcherId) return;
+
+  try {
+    _bgWatcherId = await BackgroundGeolocation.addWatcher(
+      {
+        backgroundMessage: 'AirLinks is keeping you discoverable.',
+        backgroundTitle: 'AirLinks Location Active',
+        requestPermissions: false,
+        stale: false,
+        distanceFilter: 15,
+      },
+      async (location, error) => {
+        if (error || !location) return;
+        if (!isValidGpsCoord(location.latitude, location.longitude)) return;
+
+        const isDisc = localStorage.getItem(SK_ON) === 'true';
+        if (!isDisc) return;
+
+        try {
+          await apiPatch('/profile/location', {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          });
+          console.log('[BGLocation] updated', location.latitude, location.longitude);
+        } catch (err) {
+          console.warn('[BGLocation] update failed', err);
+        }
+      }
+    );
+    console.log('[BGLocation] always-on watcher started');
+  } catch (err) {
+    _bgWatcherId = null;
+    console.warn('[BGLocation] failed to start watcher', err);
+  }
 }
 
 async function persistDiscoverablePreference(
@@ -815,6 +887,7 @@ export async function startSharing(
 
     startForegroundIntervals();
     void doNearbyPoll();
+    void startAlwaysOnTracking();
 
     addLog('startSharing: active ✓');
     return {
@@ -859,6 +932,11 @@ export async function stopSharing(): Promise<SharingToggleResult> {
     _cachedDiscoverable = false;
     setState({ error: null });
 
+    if (Capacitor.isNativePlatform()) {
+      await stopAlwaysOnTracking();
+      console.log('[BGLocation] watchers removed — discoverable off');
+    }
+
     addLog('stopSharing: done');
     return {
       ok: true,
@@ -868,6 +946,9 @@ export async function stopSharing(): Promise<SharingToggleResult> {
   } catch (err) {
     forceHaltSharingLoops();
     _cachedDiscoverable = false;
+    if (Capacitor.isNativePlatform()) {
+      await stopAlwaysOnTracking();
+    }
     const msg = err instanceof Error ? err.message : 'Unable to stop sharing.';
     setState({ error: msg, isSharing: false });
     addLog(`stopSharing FAILED: ${msg}`);
