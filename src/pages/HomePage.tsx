@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +34,12 @@ const HomePage = () => {
     const turningOn = !sharing.isSharing;
     toggleInFlight.current = true;
 
+    if (turningOn) {
+      showDiscoverableImmediately(user, token);
+    } else {
+      showNotDiscoverableImmediately();
+    }
+
     try {
       const result = turningOn
         ? await sharing.startSharing(user, token)
@@ -54,16 +60,7 @@ const HomePage = () => {
     } finally {
       toggleInFlight.current = false;
     }
-  }, [user, token, sharing, updateSession]);
-
-  const handlePointerDown = useCallback(() => {
-    if (!user || !token || toggleInFlight.current) return;
-    if (sharing.isSharing) {
-      showNotDiscoverableImmediately();
-    } else {
-      showDiscoverableImmediately(user, token);
-    }
-  }, [user, token, sharing.isSharing]);
+  }, [user, token, sharing.isSharing, sharing.startSharing, sharing.stopSharing, updateSession]);
 
   const discoverable = sharing.isSharing;
   const canToggle = Boolean(user && token);
@@ -128,34 +125,63 @@ const HomePage = () => {
               disabled={!canToggle}
               className="rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center relative shrink-0 disabled:opacity-50"
               style={{ width: 'var(--icon-button-size-home)', height: 'var(--icon-button-size-home)' }}
-              whileTap={canToggle ? { scale: 0.9, y: 2 } : undefined}
-              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-              onPointerDown={handlePointerDown}
+              whileTap={canToggle ? { scale: 0.96 } : undefined}
+              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
               onClick={() => void handleToggleSharing()}
             >
-              {discoverable && (
-                <>
-                  {[0, 1, 2].map((i) => (
-                    <motion.div
-                      key={i}
-                      className="absolute inset-0 rounded-full border-2 border-primary/20"
-                      initial={{ scale: 1, opacity: 0.5 }}
-                      animate={{ scale: 2.2, opacity: 0 }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        repeatDelay: 0,
-                        delay: i * (2 / 3),
-                      }}
-                    />
-                  ))}
-                </>
-              )}
-              {discoverable ? (
-                <Wifi size={64} className="text-primary" />
-              ) : (
-                <WifiOff size={64} className="text-primary" />
-              )}
+              <AnimatePresence>
+                {discoverable && (
+                  <motion.div
+                    key="pulse-rings"
+                    className="absolute inset-0"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        className="absolute inset-0 rounded-full border-2 border-primary/20"
+                        initial={{ scale: 1, opacity: 0.5 }}
+                        animate={{ scale: 2.2, opacity: 0 }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          repeatDelay: 0,
+                          delay: i * (2 / 3),
+                        }}
+                      />
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {discoverable ? (
+                  <motion.span
+                    key="wifi-on"
+                    className="relative z-10 flex items-center justify-center"
+                    initial={{ opacity: 0, scale: 0.94 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.94 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                  >
+                    <Wifi size={64} className="text-primary" />
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="wifi-off"
+                    className="relative z-10 flex items-center justify-center"
+                    initial={{ opacity: 0, scale: 0.94 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.94 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                  >
+                    <WifiOff size={64} className="text-primary" />
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </motion.button>
 
             <div className="flex flex-col items-center w-full gap-[var(--section-gap)] mt-20 max-w-sm">
