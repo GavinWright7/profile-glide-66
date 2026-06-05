@@ -36,7 +36,7 @@ async function discoveryState(req, res) {
       SELECT
         COUNT(*) FILTER (WHERE is_discoverable = true)::int AS discoverable,
         COUNT(*) FILTER (WHERE last_latitude IS NOT NULL)::int AS has_location,
-        COUNT(*) FILTER (WHERE last_seen_at > NOW() - INTERVAL '24 hours')::int AS recent
+        COUNT(*) FILTER (WHERE last_seen_at > NOW() - INTERVAL '7 days')::int AS recent
       FROM profiles
     `);
     res.json(result.rows[0]);

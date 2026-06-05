@@ -24,6 +24,7 @@
 import { Geolocation }  from '@capacitor/geolocation';
 import { App }          from '@capacitor/app';
 import { Capacitor }    from '@capacitor/core';
+import { Preferences }  from '@capacitor/preferences';
 import { BackgroundGeolocation } from '../plugins/backgroundGeolocation';
 import { APPLE_TESTER_USER_ID, AUTH_401_EVENT, hasNonDemoSessionReady } from '../auth/authService';
 import type { AuthUser } from '../auth/authService';
@@ -296,7 +297,6 @@ export async function stopAlwaysOnTracking(): Promise<void> {
 
 export async function startAlwaysOnTracking(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-  if (!isBackgroundLocationGranted()) return;
   if (_bgWatcherId) return;
 
   try {
@@ -689,11 +689,13 @@ async function doNearbyPoll() {
 
 // ── Persistence ──────────────────────────────────────────────────────────────
 
-function persistSession(user: AuthUser, token: string) {
+async function persistSession(user: AuthUser, token: string) {
   try {
     localStorage.setItem(SK_ON,    'true');
     localStorage.setItem(SK_USER,  JSON.stringify(user));
     localStorage.setItem(SK_TOKEN, token);
+    void Preferences.set({ key: 'pg_sharing_on', value: 'true' });
+    void Preferences.set({ key: 'pg_sharing_token', value: token });
   } catch { /* ignore storage errors */ }
 }
 
@@ -702,6 +704,7 @@ function clearSharingPersistence() {
     localStorage.removeItem(SK_ON);
     localStorage.removeItem(SK_USER);
     localStorage.removeItem(SK_TOKEN);
+    void Preferences.set({ key: 'pg_sharing_on', value: 'false' });
   } catch { /* ignore */ }
 }
 
@@ -793,6 +796,29 @@ function startDemoSharing(): void {
 }
 
 /**
+ * Flip discoverable UI instantly on tap — before GPS/API work completes.
+ */
+export function showDiscoverableImmediately(user: AuthUser, token: string): void {
+  if (user.id === APPLE_TESTER_USER_ID) {
+    startDemoSharing();
+    return;
+  }
+  _cachedDiscoverable = true;
+  _resumeUser = user;
+  _resumeToken = token;
+  setState({ isSharing: true, error: null });
+  void persistSession(user, token);
+}
+
+/**
+ * Flip discoverable UI off instantly on tap — before backend stop completes.
+ */
+export function showNotDiscoverableImmediately(): void {
+  forceHaltSharingLoops();
+  _cachedDiscoverable = false;
+}
+
+/**
  * Start sharing: request location → register with backend → heartbeat + poll loops.
  * Background-capable once UIBackgroundModes: [location] is in Info.plist.
  * For Apple Tester users, uses demo mode (no backend).
@@ -803,7 +829,10 @@ export async function startSharing(
   options: { skipPersist?: boolean } = {}
 ): Promise<SharingToggleResult> {
   if (_isStarting) { addLog('startSharing: already starting'); return { ok: false, error: 'Please wait…' }; }
-  if (state.isSharing) { addLog('startSharing: already sharing'); return { ok: true }; }
+  if (state.isSharing && _heartbeatTimer !== null) {
+    addLog('startSharing: already sharing');
+    return { ok: true };
+  }
 
   if (user.id === APPLE_TESTER_USER_ID) {
     startDemoSharing();
@@ -816,7 +845,11 @@ export async function startSharing(
   }
 
   _isStarting = true;
-  setState({ error: null });
+  _cachedDiscoverable = true;
+  _resumeUser = user;
+  _resumeToken = token;
+  setState({ isSharing: true, error: null });
+  void persistSession(user, token);
   initLifecycleListener();
 
   try {
@@ -827,7 +860,9 @@ export async function startSharing(
     if (perm !== 'granted') {
       const ok = await requestPermission();
       if (!ok) {
-        setState({ error: 'Location access is required to go discoverable.' });
+        _cachedDiscoverable = false;
+        clearSharingPersistence();
+        setState({ error: 'Location access is required to go discoverable.', isSharing: false });
         return { ok: false, error: 'Location access is required to go discoverable.' };
       }
     }
@@ -835,6 +870,9 @@ export async function startSharing(
     const loc = await getPosition(false);
     if (!loc || !isValidGpsCoord(loc.lat, loc.lng)) {
       const msg = 'Could not determine your location. Please try again.';
+      _cachedDiscoverable = false;
+      clearSharingPersistence();
+      clearForegroundIntervals();
       setState({ error: msg, isSharing: false });
       return { ok: false, error: msg };
     }
@@ -857,6 +895,9 @@ export async function startSharing(
       addLog(`startSharing FAILED: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`);
       console.error('[Sharing] fetch error:', fetchErr);
       const msg = 'Unable to connect. Check your internet and try again.';
+      _cachedDiscoverable = false;
+      clearSharingPersistence();
+      clearForegroundIntervals();
       setState({ error: msg, isSharing: false });
       return { ok: false, error: msg };
     }
@@ -873,17 +914,17 @@ export async function startSharing(
     if (!res.ok) {
       const body = resBody as { error?: string };
       const msg = userFacingSharingError(status, body);
+      _cachedDiscoverable = false;
+      clearSharingPersistence();
+      clearForegroundIntervals();
       setState({ error: msg, isSharing: false });
       addLog(`startSharing FAILED: ${status}`);
       return { ok: false, error: msg };
     }
 
-    persistSession(user, token);
-    _resumeUser = user;
-    _resumeToken = token;
     _cachedDiscoverable = true;
     _lastHeartbeatTime = Date.now();
-    setState({ isSharing: true, lastHeartbeatAt: new Date(), error: null });
+    setState({ lastHeartbeatAt: new Date(), error: null });
 
     startForegroundIntervals();
     void doNearbyPoll();
@@ -899,9 +940,10 @@ export async function startSharing(
     const msg = err instanceof Error ? err.message : 'Unable to go discoverable.';
     addLog(`startSharing FAILED: ${msg}`);
     console.error('[Sharing] startSharing error:', err);
-    setState({ error: msg, isSharing: false });
-    clearForegroundIntervals();
+    _cachedDiscoverable = false;
     clearSharingPersistence();
+    clearForegroundIntervals();
+    setState({ error: msg, isSharing: false });
     return { ok: false, error: msg };
   } finally {
     _isStarting = false;
@@ -914,6 +956,12 @@ export async function startSharing(
 export async function stopSharing(): Promise<SharingToggleResult> {
   addLog('stopSharing called');
   const notifyBackend = hasNonDemoSessionReady();
+
+  forceHaltSharingLoops();
+  _cachedDiscoverable = false;
+  if (Capacitor.isNativePlatform()) {
+    void stopAlwaysOnTracking();
+  }
 
   try {
     let sessionUpdate: { user: AuthUser; token: string } | null = null;
@@ -928,14 +976,7 @@ export async function stopSharing(): Promise<SharingToggleResult> {
       sessionUpdate = await persistDiscoverablePreference(false);
     }
 
-    forceHaltSharingLoops();
-    _cachedDiscoverable = false;
     setState({ error: null });
-
-    if (Capacitor.isNativePlatform()) {
-      await stopAlwaysOnTracking();
-      console.log('[BGLocation] watchers removed — discoverable off');
-    }
 
     addLog('stopSharing: done');
     return {
@@ -944,10 +985,8 @@ export async function stopSharing(): Promise<SharingToggleResult> {
       token: sessionUpdate?.token,
     };
   } catch (err) {
-    forceHaltSharingLoops();
-    _cachedDiscoverable = false;
     if (Capacitor.isNativePlatform()) {
-      await stopAlwaysOnTracking();
+      void stopAlwaysOnTracking();
     }
     const msg = err instanceof Error ? err.message : 'Unable to stop sharing.';
     setState({ error: msg, isSharing: false });

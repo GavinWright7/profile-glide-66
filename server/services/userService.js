@@ -410,7 +410,7 @@ async function getDiscoveryPipelineStats(latitude, longitude, radiusMeters, excl
     `SELECT
        COUNT(*) FILTER (WHERE p.is_discoverable = true)::int AS total_discoverable,
        COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_latitude IS NOT NULL)::int AS with_location,
-       COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_seen_at > NOW() - INTERVAL '24 hours')::int AS recent_24h
+       COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_seen_at > NOW() - INTERVAL '7 days')::int AS recent_24h
      FROM profiles p`
   );
   const distExpr = haversineSql('$1', '$2');
@@ -421,7 +421,7 @@ async function getDiscoveryPipelineStats(latitude, longitude, radiusMeters, excl
      WHERE p.is_discoverable = true
        AND p.last_latitude IS NOT NULL
        AND p.last_longitude IS NOT NULL
-       AND p.last_seen_at > NOW() - INTERVAL '24 hours'
+       AND p.last_seen_at > NOW() - INTERVAL '7 days'
        AND u.linkedin_subject_id != $3
        AND ${distExpr} < $4`,
     [latitude, longitude, excludeLinkedinSubjectId, radiusMeters]
@@ -494,7 +494,7 @@ async function getNearbyDiscoverableUsers(
      WHERE p.is_discoverable = true
        AND p.last_latitude IS NOT NULL
        AND p.last_longitude IS NOT NULL
-       AND p.last_seen_at > NOW() - INTERVAL '24 hours'
+       AND p.last_seen_at > NOW() - INTERVAL '7 days'
        AND u.linkedin_subject_id != $3
        AND ${distExpr} < $4
      ORDER BY distance_meters ASC

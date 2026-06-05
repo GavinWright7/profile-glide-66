@@ -11,6 +11,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         #if DEBUG
         resetDebugApplicationState()
         #endif
+        BackgroundLocationManager.shared.startIfEnabled()
         return true
     }
 
@@ -50,12 +51,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
+        BackgroundLocationManager.shared.startIfEnabled()
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        BackgroundLocationManager.shared.startIfEnabled()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

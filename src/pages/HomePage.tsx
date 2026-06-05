@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2, Wifi, WifiOff, LogOut } from 'lucide-react';
+import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
-import { setCachedDiscoverablePreference, startAlwaysOnTracking } from '../utils/sharing';
-
-const TOGGLE_DEBOUNCE_MS = 1000;
+import {
+  setCachedDiscoverablePreference,
+  showDiscoverableImmediately,
+  showNotDiscoverableImmediately,
+  startAlwaysOnTracking,
+} from '../utils/sharing';
 
 const HomePage = () => {
   const { user, token, isAuthReady, logout, updateSession } = useAuth();
   const sharing = useSharing();
-  const [toggleBusy, setToggleBusy] = useState(false);
-  const lastToggleAt = useRef(0);
+  const toggleInFlight = useRef(false);
 
   useEffect(() => {
     if (isAuthReady && user && token) {
@@ -27,29 +29,44 @@ const HomePage = () => {
   }, [isAuthReady, user, token, sharing.isSharing, sharing.tryAutoResume]);
 
   const handleToggleSharing = useCallback(async () => {
-    if (!user || !token || toggleBusy) return;
+    if (!user || !token || toggleInFlight.current) return;
 
-    const now = Date.now();
-    if (now - lastToggleAt.current < TOGGLE_DEBOUNCE_MS) return;
-    lastToggleAt.current = now;
+    const turningOn = !sharing.isSharing;
+    toggleInFlight.current = true;
 
-    setToggleBusy(true);
     try {
-      const result = sharing.isSharing
-        ? await sharing.stopSharing()
-        : await sharing.startSharing(user, token);
+      const result = turningOn
+        ? await sharing.startSharing(user, token)
+        : await sharing.stopSharing();
 
       if (result.user && result.token) {
         updateSession({ token: result.token, user: result.user });
         setCachedDiscoverablePreference(result.user.isDiscoverable === true, result.user, result.token);
       }
+
+      if (!result.ok) {
+        if (turningOn) {
+          showNotDiscoverableImmediately();
+        } else {
+          showDiscoverableImmediately(user, token);
+        }
+      }
     } finally {
-      setToggleBusy(false);
+      toggleInFlight.current = false;
     }
-  }, [user, token, toggleBusy, sharing, updateSession]);
+  }, [user, token, sharing, updateSession]);
+
+  const handlePointerDown = useCallback(() => {
+    if (!user || !token || toggleInFlight.current) return;
+    if (sharing.isSharing) {
+      showNotDiscoverableImmediately();
+    } else {
+      showDiscoverableImmediately(user, token);
+    }
+  }, [user, token, sharing.isSharing]);
 
   const discoverable = sharing.isSharing;
-  const toggleDisabled = toggleBusy || !user || !token;
+  const canToggle = Boolean(user && token);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col page-with-header overflow-hidden">
@@ -108,19 +125,15 @@ const HomePage = () => {
           <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
             <motion.button
               type="button"
-              disabled={toggleDisabled}
+              disabled={!canToggle}
               className="rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center relative shrink-0 disabled:opacity-50"
               style={{ width: 'var(--icon-button-size-home)', height: 'var(--icon-button-size-home)' }}
-              whileTap={toggleDisabled ? undefined : { scale: 0.9, y: 2 }}
+              whileTap={canToggle ? { scale: 0.9, y: 2 } : undefined}
               transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+              onPointerDown={handlePointerDown}
               onClick={() => void handleToggleSharing()}
             >
-              {toggleBusy && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
-                </div>
-              )}
-              {!toggleBusy && discoverable && (
+              {discoverable && (
                 <>
                   {[0, 1, 2].map((i) => (
                     <motion.div
@@ -138,11 +151,11 @@ const HomePage = () => {
                   ))}
                 </>
               )}
-              {!toggleBusy && (discoverable ? (
+              {discoverable ? (
                 <Wifi size={64} className="text-primary" />
               ) : (
                 <WifiOff size={64} className="text-primary" />
-              ))}
+              )}
             </motion.button>
 
             <div className="flex flex-col items-center w-full gap-[var(--section-gap)] mt-20 max-w-sm">
@@ -153,11 +166,9 @@ const HomePage = () => {
                 </h2>
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                {toggleBusy
-                  ? 'Updating…'
-                  : discoverable
-                    ? 'Nearby people can see your profile'
-                    : 'Tap to become discoverable nearby'}
+                {discoverable
+                  ? 'Nearby people can see your profile'
+                  : 'Tap to become discoverable nearby'}
               </p>
             </div>
           </div>
