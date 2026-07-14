@@ -174,7 +174,7 @@ const RadarPage = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input
             type="search"
-            placeholder="Search by company"
+            placeholder="Search name, industry, or company"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"

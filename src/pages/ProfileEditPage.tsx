@@ -15,24 +15,7 @@ import {
 } from '../utils/bioTemplate';
 import { validateLinkedInUrl } from '../utils/linkedinUrl';
 import { CAREER_OPTIONS, MAX_PROFILE_BIO_LENGTH } from '../constants/careers';
-
-const INTEREST_OPTIONS = [
-  'Financial Services',
-  'Technology',
-  'Consulting',
-  'Healthcare & Life Sciences',
-  'Marketing & Advertising',
-  'Human Resources & Recruiting',
-  'Sales & Business Development',
-  'Education',
-  'Law / Legal Services',
-  'Real Estate',
-  'Government & Public Policy',
-  'Media & Entertainment',
-  'Manufacturing & Industrial',
-  'Energy & Natural Resources',
-  'Transportation & Logistics',
-];
+import { INDUSTRY_OPTIONS } from '@/constants/industries';
 
 export default function ProfileEditPage() {
   const navigate = useNavigate();
@@ -400,7 +383,7 @@ export default function ProfileEditPage() {
                 Select up to 3 industries that match your professional interests.
               </p>
               <div className="flex flex-wrap gap-2">
-                {INTEREST_OPTIONS.map((interest) => (
+                {INDUSTRY_OPTIONS.map((interest) => (
                   <button
                     key={interest}
                     type="button"

@@ -1,7 +1,5 @@
-/**
- * Allowed industry interests — user selects during onboarding (alphabetical).
- */
-const INTEREST_OPTIONS = [
+/** Major industries — keep in sync with server/constants/interests.js */
+export const INDUSTRY_OPTIONS = [
   'Consulting',
   'Education',
   'Energy & Natural Resources',
@@ -17,6 +15,6 @@ const INTEREST_OPTIONS = [
   'Sales & Business Development',
   'Technology',
   'Transportation & Logistics',
-];
+] as const;
 
-module.exports = { INTEREST_OPTIONS };
+export type IndustryOption = (typeof INDUSTRY_OPTIONS)[number];

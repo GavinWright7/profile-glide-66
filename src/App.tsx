@@ -15,6 +15,7 @@ import ProfilePage from "./pages/ProfilePage";
 import ProfileEditPage from "./pages/ProfileEditPage";
 import OnboardingLinkedInPage from "./pages/OnboardingLinkedInPage";
 import OnboardingProfessionalBackgroundPage from "./pages/OnboardingProfessionalBackgroundPage";
+import OnboardingIndustryPage from "./pages/OnboardingIndustryPage";
 import OnboardingBackgroundLocationPage from "./pages/OnboardingBackgroundLocationPage";
 import NotFound from "./pages/NotFound";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -55,11 +56,12 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const isLinkedIn = location.pathname === '/onboarding/linkedin-url';
   const isProfessionalBackground = location.pathname === '/onboarding/professional-background';
+  const isIndustry = location.pathname === '/onboarding/industry';
   const isBackgroundLocation = location.pathname === '/onboarding/background-location';
 
   if (isLoading) return null;
   if (isDemoUser) return <>{children}</>;
-  if (isLinkedIn || isProfessionalBackground || isBackgroundLocation) return <>{children}</>;
+  if (isLinkedIn || isProfessionalBackground || isIndustry || isBackgroundLocation) return <>{children}</>;
 
   const hasValidUrl = user?.linkedinUrl && isValidLinkedInUrl(user.linkedinUrl);
   if (!hasValidUrl) {
@@ -71,6 +73,11 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
     user?.almaMater?.trim();
   if (!hasProfessionalBackground) {
     return <Navigate to="/onboarding/professional-background" replace />;
+  }
+
+  const hasIndustry = Array.isArray(user?.interests) && user.interests.length > 0;
+  if (!hasIndustry) {
+    return <Navigate to="/onboarding/industry" replace />;
   }
 
   if (localStorage.getItem(BG_LOCATION_KEY) === null) {
@@ -111,6 +118,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <OnboardingProfessionalBackgroundPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding/industry"
+              element={
+                <ProtectedRoute>
+                  <OnboardingIndustryPage />
                 </ProtectedRoute>
               }
             />

@@ -474,6 +474,8 @@ async function getNearbyDiscoverableUsers(
   const searchClause = searchTrim
     ? `AND (
          TRIM(COALESCE(p.full_name, '')) ILIKE $6
+         OR TRIM(COALESCE(p.first_name, '')) ILIKE $6
+         OR TRIM(COALESCE(p.last_name, '')) ILIKE $6
          OR TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) ILIKE $6
          OR TRIM(COALESCE(p.current_company, '')) ILIKE $6
          OR EXISTS (
