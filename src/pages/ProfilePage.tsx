@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Loader2, Pencil } from 'lucide-react';
+import { Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
@@ -17,10 +17,15 @@ function bioForDisplay(u: AuthUser | null | undefined, sessionUser?: AuthUser | 
   return generateBio(profile);
 }
 
+function generatedBioFromUser(profileUser: AuthUser | null, sessionUser: AuthUser | null | undefined): string {
+  return generateBio(bioProfileFromAuthUsers(profileUser ?? undefined, sessionUser ?? undefined));
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { token, user, isDemoUser, updateSession } = useAuth();
+  const [profileUser, setProfileUser] = useState<AuthUser | null>(null);
   const [bio, setBio] = useState('');
   const [savedBio, setSavedBio] = useState('');
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -30,6 +35,7 @@ export default function ProfilePage() {
 
   const loadMe = useCallback(async () => {
     if (!token || isDemoUser) {
+      setProfileUser(user ?? null);
       const display = bioForDisplay(user, user);
       setBio(display);
       setSavedBio(display);
@@ -42,7 +48,9 @@ export default function ProfilePage() {
       const res = await apiGet('/profile');
       const data = (await res.json()) as { user?: AuthUser; error?: string };
       if (!res.ok) throw new Error(data.error || 'Failed to load profile');
-      const display = bioForDisplay(data.user ?? null, user);
+      const loaded = data.user ?? null;
+      setProfileUser(loaded);
+      const display = bioForDisplay(loaded, user);
       setBio(display);
       setSavedBio(display);
     } catch (e) {
@@ -76,6 +84,7 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(data.error || 'Save failed');
       if (data.token && data.user) {
         await updateSession({ token: data.token, user: data.user });
+        setProfileUser(data.user);
       }
       setSavedBio(trimmed);
       setBio(trimmed);
@@ -96,6 +105,12 @@ export default function ProfilePage() {
       return;
     }
     void saveBio();
+  };
+
+  const handleResetBio = () => {
+    const generated = generatedBioFromUser(profileUser, user);
+    setBio(generated);
+    toast.message('Bio reset to your profile template');
   };
 
   const bioDirty = bio.trim() !== savedBio.trim();
@@ -145,7 +160,7 @@ export default function ProfilePage() {
 
                 <Button
                   className="w-full gap-2"
-                  disabled={saving || (isEditingBio && !bioDirty && !bio.trim())}
+                  disabled={saving || (isEditingBio && !bio.trim())}
                   onClick={() => void handleEditBioClick()}
                 >
                   {saving ? (
@@ -156,13 +171,22 @@ export default function ProfilePage() {
                   {isEditingBio ? 'Save bio' : 'Edit bio'}
                 </Button>
 
-                <Button
-                  className="w-full gap-2"
-                  onClick={() => navigate('/profile/edit')}
-                >
-                  <Pencil className="w-4 h-4" />
-                  Edit profile
-                </Button>
+                {isEditingBio ? (
+                  <Button
+                    type="button"
+                    className="w-full gap-2"
+                    disabled={saving}
+                    onClick={handleResetBio}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Reset bio
+                  </Button>
+                ) : (
+                  <Button className="w-full gap-2" onClick={() => navigate('/profile/edit')}>
+                    <Pencil className="w-4 h-4" />
+                    Edit profile
+                  </Button>
+                )}
               </div>
             </>
           )}
