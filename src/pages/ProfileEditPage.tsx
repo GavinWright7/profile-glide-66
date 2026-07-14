@@ -350,7 +350,7 @@ export default function ProfileEditPage() {
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles size={16} className="text-primary shrink-0" />
                 <label className="text-xs font-medium text-muted-foreground">
-                  Career / Role Level <span className="text-muted-foreground/70">(optional)</span>
+                  Describe your role <span className="text-muted-foreground/70">(optional)</span>
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
