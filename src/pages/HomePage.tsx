@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Wifi, WifiOff, LogOut } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { useSharing } from '../hooks/useSharing';
@@ -14,7 +15,6 @@ import {
 const HomePage = () => {
   const { user, token, isAuthReady, logout, updateSession } = useAuth();
   const sharing = useSharing();
-  const toggleInFlight = useRef(false);
 
   useEffect(() => {
     if (isAuthReady && user && token) {
@@ -28,11 +28,10 @@ const HomePage = () => {
     }
   }, [isAuthReady, user, token, sharing.isSharing, sharing.tryAutoResume]);
 
-  const handleToggleSharing = useCallback(async () => {
-    if (!user || !token || toggleInFlight.current) return;
+  const handleToggleSharing = useCallback(() => {
+    if (!user || !token) return;
 
     const turningOn = !sharing.isSharing;
-    toggleInFlight.current = true;
 
     if (turningOn) {
       showDiscoverableImmediately(user, token);
@@ -40,11 +39,9 @@ const HomePage = () => {
       showNotDiscoverableImmediately();
     }
 
-    try {
-      const result = turningOn
-        ? await sharing.startSharing(user, token)
-        : await sharing.stopSharing();
+    const request = turningOn ? sharing.startSharing(user, token) : sharing.stopSharing();
 
+    void request.then((result) => {
       if (result.user && result.token) {
         updateSession({ token: result.token, user: result.user });
         setCachedDiscoverablePreference(result.user.isDiscoverable === true, result.user, result.token);
@@ -56,10 +53,9 @@ const HomePage = () => {
         } else {
           showDiscoverableImmediately(user, token);
         }
+        toast.error(result.error || 'Could not update discoverability');
       }
-    } finally {
-      toggleInFlight.current = false;
-    }
+    });
   }, [user, token, sharing.isSharing, sharing.startSharing, sharing.stopSharing, updateSession]);
 
   const discoverable = sharing.isSharing;

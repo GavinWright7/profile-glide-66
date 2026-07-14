@@ -8,9 +8,10 @@ const {
   resolveDisplayBio,
   bioProfileFromRow,
   bioProfileFromUser,
+  generateBio,
 } = require('../utils/bioTemplate');
 
-const MAX_BIO_LEN = 800;
+const MAX_BIO_LEN = 300;
 
 /**
  * PUT /profile/linkedin-url
@@ -276,9 +277,9 @@ async function getProfile(req, res) {
       graduationYear,
       bio,
       career,
+      interests: Array.isArray(stored?.interests) ? stored.interests : user.interests ?? [],
+      goals: Array.isArray(stored?.goals) ? stored.goals : user.goals ?? [],
     };
-    delete merged.interests;
-    delete merged.goals;
     res.json({ user: merged });
   } catch (err) {
     console.error('[profile] getProfile error:', err.message);
@@ -315,6 +316,9 @@ async function patchMe(req, res) {
     almaMater,
     graduationYear,
     pastCompanies,
+    linkedinUrl,
+    goals,
+    regenerateBio,
   } = req.body;
 
   if (
@@ -325,7 +329,10 @@ async function patchMe(req, res) {
     currentCompany === undefined &&
     almaMater === undefined &&
     graduationYear === undefined &&
-    pastCompanies === undefined
+    pastCompanies === undefined &&
+    linkedinUrl === undefined &&
+    goals === undefined &&
+    regenerateBio === undefined
   ) {
     return res.status(400).json({
       error: 'Provide at least one field to update',
@@ -355,7 +362,14 @@ async function patchMe(req, res) {
       currentCompany !== undefined ? String(currentCompany ?? '').trim() : user.currentCompany?.trim() || '';
     const alma =
       almaMater !== undefined ? String(almaMater ?? '').trim() : user.almaMater?.trim() || '';
-    const gradRaw = graduationYear != null ? String(graduationYear).trim() : '';
+    const gradRaw =
+      graduationYear !== undefined
+        ? graduationYear != null
+          ? String(graduationYear).trim()
+          : ''
+        : user.graduationYear != null
+          ? String(user.graduationYear).trim()
+          : '';
 
     if (!jobTitle || !alma) {
       return res.status(400).json({
@@ -387,11 +401,39 @@ async function patchMe(req, res) {
         currentCompany: company || null,
         almaMater: alma,
         pastCompanies: past,
-        ...(gradRaw ? { graduationYear: gradRaw } : { graduationYear: null }),
+        graduationYear: gradRaw || null,
       });
     } catch (err) {
       console.error('[profile] patchMe professional error:', err.message);
       return res.status(500).json({ error: 'Failed to update professional background' });
+    }
+  }
+
+  if (linkedinUrl !== undefined) {
+    const normalized = validateAndNormalize(linkedinUrl);
+    if (!normalized) {
+      return res.status(400).json({
+        error: 'Invalid LinkedIn URL. Use format: https://www.linkedin.com/in/your-username/',
+      });
+    }
+    try {
+      await userService.updateLinkedInUrl(user.id, normalized);
+    } catch (err) {
+      console.error('[profile] patchMe linkedin error:', err.message);
+      return res.status(500).json({ error: 'Failed to update LinkedIn URL' });
+    }
+  }
+
+  if (goals !== undefined) {
+    if (!Array.isArray(goals)) {
+      return res.status(400).json({ error: 'goals must be an array of strings' });
+    }
+    const normalizedGoals = goals.map((s) => String(s ?? '').trim()).filter(Boolean);
+    try {
+      await userService.updateGoals(user.id, normalizedGoals.length ? normalizedGoals : []);
+    } catch (err) {
+      console.error('[profile] patchMe goals error:', err.message);
+      return res.status(500).json({ error: 'Failed to update goals' });
     }
   }
 
@@ -427,27 +469,36 @@ async function patchMe(req, res) {
       await userService.updateInterests(user.id, flatIndustries);
     }
 
-    if (bio !== undefined || career !== undefined) {
-      if (bio !== undefined) {
-        console.log('[Profile] saving bio', { userId: user.id, length: String(bio).length });
-      }
-      try {
-        await userService.updateProfileMePatch(user.id, { bio, career });
-      } catch (err) {
-        if (err.code === 'bio_too_long') {
-          return res.status(400).json({
-            error: `Bio must be ${MAX_BIO_LEN} characters or less`,
+    if (bio !== undefined || career !== undefined || regenerateBio === true) {
+      if (regenerateBio === true) {
+        const row = await userService.getProfileByLinkedInId(user.id);
+        const profileInput = bioProfileFromRow(row, user);
+        const newBio = generateBio(profileInput);
+        await userService.updateProfileMePatch(user.id, { bio: newBio, career });
+      } else {
+        if (bio !== undefined) {
+          console.log('[Profile] saving bio', { userId: user.id, length: String(bio).length });
+        }
+        try {
+          await userService.updateProfileMePatch(user.id, { bio, career });
+        } catch (err) {
+          if (err.code === 'bio_too_long') {
+            return res.status(400).json({
+              error: `Bio must be ${MAX_BIO_LEN} characters or less`,
+            });
+          }
+          throw err;
+        }
+        if (bio !== undefined) {
+          const row = await userService.getProfileByLinkedInId(user.id);
+          console.log('[Profile] saved bio result', {
+            userId: user.id,
+            storedLength: row?.bio != null ? String(row.bio).length : 0,
           });
         }
-        throw err;
       }
-      if (bio !== undefined) {
-        const row = await userService.getProfileByLinkedInId(user.id);
-        console.log('[Profile] saved bio result', {
-          userId: user.id,
-          storedLength: row?.bio != null ? String(row.bio).length : 0,
-        });
-      }
+    } else if (career !== undefined) {
+      await userService.updateProfileMePatch(user.id, { career });
     }
 
     const merged = await userService.getMergedUserForAuth(user.id, user);

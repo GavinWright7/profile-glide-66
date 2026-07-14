@@ -68,8 +68,11 @@ export function DiscoverProfileCard({
         )}
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-foreground truncate">{user.name}</h2>
-          {user.headline ? (
-            <p className="text-sm text-muted-foreground truncate">{user.headline}</p>
+          {(user.headline || user.company || user.jobTitle) ? (
+            <p className="text-sm text-muted-foreground truncate">
+              {user.headline ||
+                [user.jobTitle, user.company].filter(Boolean).join(' at ')}
+            </p>
           ) : null}
           <p className="text-xs text-muted-foreground mt-1">{PROXIMITY_LABEL}</p>
         </div>

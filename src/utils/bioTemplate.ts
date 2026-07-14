@@ -91,10 +91,13 @@ function educationLine(almaMater: string, graduationYear: string | number | null
   if (!school) return null;
   const yearNum = parseGradYear(graduationYear);
   const currentYear = new Date().getFullYear();
-  if (yearNum !== null && yearNum >= currentYear) {
-    return `I am studying at ${school}.`;
+  if (yearNum === null) {
+    return `I studied at ${school}.`;
   }
-  return `I studied at ${school}.`;
+  if (yearNum >= currentYear) {
+    return `I am studying at ${school} and will graduate in ${yearNum}.`;
+  }
+  return `I studied at ${school} and graduated in ${yearNum}.`;
 }
 
 function isCurrentStudentByGradYear(graduationYear: string | number | null | undefined): boolean {

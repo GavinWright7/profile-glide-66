@@ -104,6 +104,8 @@ export interface AuthUser {
   bio?: string;
   career?: string;
   isDiscoverable?: boolean;
+  interests?: string[];
+  goals?: string[];
 }
 
 export interface AuthSession {

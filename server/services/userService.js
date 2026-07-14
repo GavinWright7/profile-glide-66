@@ -212,11 +212,11 @@ function mergeJwtUserWithProfileRow(baseUser, row) {
           row.career != null && String(row.career).trim() !== ''
             ? String(row.career).trim()
             : baseUser.career ?? '',
+        interests: Array.isArray(row.interests) ? row.interests : baseUser.interests ?? [],
+        goals: Array.isArray(row.goals) ? row.goals : baseUser.goals ?? [],
         isDiscoverable: row.is_discoverable === true,
       }
     : { ...baseUser };
-  delete merged.interests;
-  delete merged.goals;
   return merged;
 }
 
@@ -233,7 +233,7 @@ function bioForProfileRow(row) {
   return resolveDisplayBio(stored, bioProfileFromRow(row, {}));
 }
 
-const MAX_BIO_LENGTH = 800;
+const MAX_BIO_LENGTH = 300;
 
 /**
  * PATCH fields: bio, career, interests (partial). interests uses same rules as PUT /profile/interests.
@@ -442,32 +442,50 @@ async function getNearbyDiscoverableUsers(
   longitude,
   radiusMeters,
   excludeLinkedinSubjectId,
-  limit = 50
+  limit = 50,
+  searchQuery = null
 ) {
   const radius = Number.isFinite(radiusMeters) ? radiusMeters : DEFAULT_DISCOVERY_RADIUS_METERS;
+  const searchTrim = searchQuery != null ? String(searchQuery).trim() : '';
 
   console.log('[nearby] query start', {
     latitude,
     longitude,
     excludeLinkedinSubjectId,
     radiusMeters: radius,
+    searchQuery: searchTrim || null,
   });
 
-  let pipeline;
-  try {
-    pipeline = await getDiscoveryPipelineStats(
-      latitude,
-      longitude,
-      radius,
-      excludeLinkedinSubjectId
-    );
-    console.log('[nearby] pipeline stats (profiles table)', pipeline);
-  } catch (err) {
-    console.error('[nearby] pipeline stats error:', err.message);
-    pipeline = null;
+  if (process.env.LOG_NEARBY_PIPELINE_STATS === '1') {
+    try {
+      const pipeline = await getDiscoveryPipelineStats(
+        latitude,
+        longitude,
+        radius,
+        excludeLinkedinSubjectId
+      );
+      console.log('[nearby] pipeline stats (profiles table)', pipeline);
+    } catch (err) {
+      console.error('[nearby] pipeline stats error:', err.message);
+    }
   }
 
   const distExpr = haversineSql('$1', '$2');
+  const searchClause = searchTrim
+    ? `AND (
+         TRIM(COALESCE(p.full_name, '')) ILIKE $6
+         OR TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) ILIKE $6
+         OR TRIM(COALESCE(p.current_company, '')) ILIKE $6
+         OR EXISTS (
+           SELECT 1 FROM unnest(COALESCE(p.interests, ARRAY[]::text[])) AS interest
+           WHERE interest ILIKE $6
+         )
+       )`
+    : '';
+  const queryParams = searchTrim
+    ? [latitude, longitude, excludeLinkedinSubjectId, radius, limit, `%${searchTrim}%`]
+    : [latitude, longitude, excludeLinkedinSubjectId, radius, limit];
+
   const res = await db.query(
     `SELECT u.linkedin_subject_id,
             u.id AS user_uuid,
@@ -497,14 +515,15 @@ async function getNearbyDiscoverableUsers(
        AND p.last_seen_at > NOW() - INTERVAL '7 days'
        AND u.linkedin_subject_id != $3
        AND ${distExpr} < $4
+       ${searchClause}
      ORDER BY distance_meters ASC
      LIMIT $5`,
-    [latitude, longitude, excludeLinkedinSubjectId, radius, limit]
+    queryParams
   );
 
   console.log('[nearby] query result', {
     matchCount: res.rows.length,
-    pipeline,
+    searchQuery: searchTrim || null,
   });
 
   return res.rows;

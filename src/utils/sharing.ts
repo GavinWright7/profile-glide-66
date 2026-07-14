@@ -828,7 +828,10 @@ export async function startSharing(
   token: string,
   options: { skipPersist?: boolean } = {}
 ): Promise<SharingToggleResult> {
-  if (_isStarting) { addLog('startSharing: already starting'); return { ok: false, error: 'Please wait…' }; }
+  if (_isStarting) {
+    addLog('startSharing: already starting');
+    return { ok: true };
+  }
   if (state.isSharing && _heartbeatTimer !== null) {
     addLog('startSharing: already sharing');
     return { ok: true };
@@ -880,14 +883,6 @@ export async function startSharing(
     _location = loc;
     setState({ currentLocation: loc });
 
-    let sessionUpdate: { user: AuthUser; token: string } | null = null;
-    if (!options.skipPersist) {
-      sessionUpdate = await persistDiscoverablePreference(true, loc);
-      await persistDiscoverableLocationToDb('after discoverable toggle');
-    } else {
-      await persistDiscoverableLocationToDb('auto-resume skipPersist');
-    }
-
     let res: Response;
     try {
       res = await apiPost('/sharing/start', { latitude: loc.lat, longitude: loc.lng });
@@ -920,6 +915,15 @@ export async function startSharing(
       setState({ error: msg, isSharing: false });
       addLog(`startSharing FAILED: ${status}`);
       return { ok: false, error: msg };
+    }
+
+    const body = resBody as { user?: AuthUser; token?: string };
+    let sessionUpdate: { user: AuthUser; token: string } | null = null;
+    if (body.user && body.token) {
+      sessionUpdate = { user: body.user, token: body.token };
+      setCachedDiscoverablePreference(true, body.user, body.token);
+    } else if (!options.skipPersist) {
+      sessionUpdate = await persistDiscoverablePreference(true, loc);
     }
 
     _cachedDiscoverable = true;
@@ -968,12 +972,21 @@ export async function stopSharing(): Promise<SharingToggleResult> {
 
     if (notifyBackend) {
       const res = await apiPost('/sharing/stop', {});
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        user?: AuthUser;
+        token?: string;
+      };
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
         const msg = userFacingSharingError(res.status, body);
         throw new Error(msg);
       }
-      sessionUpdate = await persistDiscoverablePreference(false);
+      if (body.user && body.token) {
+        sessionUpdate = { user: body.user, token: body.token };
+        setCachedDiscoverablePreference(false, body.user, body.token);
+      } else {
+        sessionUpdate = await persistDiscoverablePreference(false);
+      }
     }
 
     setState({ error: null });

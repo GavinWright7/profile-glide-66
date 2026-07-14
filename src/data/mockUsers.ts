@@ -7,9 +7,18 @@ export interface NearbyUser {
   profilePhotoUrl: string;
   linkedinProfileUrl: string;
   linkedinId: string;
-  distance: number; // meters
-  angle: number; // degrees on radar (legacy)
+  distance: number;
+  angle: number;
   bio?: string;
+  currentJobTitle?: string;
+  currentCompany?: string;
+  school?: string;
+  almaMater?: string;
+  graduationYear?: string | null;
+  pastCompanies?: string[];
+  career?: string;
+  industry?: string;
+  interests?: string[];
 }
 
 export interface Connection {

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App } from '@capacitor/app';
-import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { DiscoverProfileCard, PROXIMITY_LABEL } from '@/components/DiscoverProfileCard';
+import { DiscoverPublicProfileModal } from '@/components/DiscoverPublicProfileModal';
 import { toast } from 'sonner';
-import { useAuth } from '@/context/AuthContext';
-import { useConnections } from '@/context/ConnectionsContext';
-import { useSharing } from '@/hooks/useSharing';
+import { useAuth } from '../context/AuthContext';
+import { useConnections } from '../context/ConnectionsContext';
+import { useSharing } from '../hooks/useSharing';
 import { apiGet } from '@/api/client';
 import { FREE_RADIUS_METERS } from '@/services/entitlementService';
 import { addRecentlyViewed } from '@/utils/recentlyViewed';
@@ -22,6 +23,16 @@ type NearbyApiUser = {
   linkedinUrl: string;
   distanceMeters: number;
   bio?: string;
+  jobTitle?: string;
+  currentJobTitle?: string;
+  currentCompany?: string;
+  school?: string;
+  almaMater?: string;
+  graduationYear?: string | null;
+  pastCompanies?: string[];
+  career?: string;
+  industry?: string;
+  interests?: string[];
 };
 
 function toNearbyUser(u: NearbyApiUser): NearbyUser | null {
@@ -30,19 +41,31 @@ function toNearbyUser(u: NearbyApiUser): NearbyUser | null {
     console.warn('[Discover] skipping user with missing name', { userId: u.userId });
     return null;
   }
-  const parts = u.headline?.split(' at ') ?? [];
+  const jobTitle = (u.currentJobTitle || u.jobTitle || u.headline?.split(' at ')[0] || '').trim();
+  const company = (u.currentCompany || u.headline?.split(' at ')[1] || '').trim();
+  const headline =
+    u.headline?.trim() || (jobTitle && company ? `${jobTitle} at ${company}` : jobTitle || company);
   return {
     id: u.userId,
     name,
-    headline: u.headline || '',
-    company: parts[1]?.trim() ?? '',
-    jobTitle: parts[0]?.trim() ?? '',
+    headline,
+    company,
+    jobTitle,
+    currentJobTitle: u.currentJobTitle || jobTitle,
+    currentCompany: u.currentCompany || company,
+    school: u.school || u.almaMater || '',
+    almaMater: u.almaMater || u.school || '',
+    graduationYear: u.graduationYear ?? null,
+    pastCompanies: u.pastCompanies ?? [],
     profilePhotoUrl: u.photoUrl || '',
     linkedinProfileUrl: u.linkedinUrl || '',
     linkedinId: u.userId,
     distance: u.distanceMeters,
     angle: 0,
     bio: u.bio || '',
+    career: u.career || '',
+    industry: u.industry || u.interests?.[0] || '',
+    interests: u.interests ?? [],
   };
 }
 
@@ -65,6 +88,13 @@ const RadarPage = () => {
   const { addSavedProfile } = useConnections();
   const [users, setUsers] = useState<NearbyUser[]>([]);
   const [modalUser, setModalUser] = useState<NearbyUser | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
 
   const fetchNearby = useCallback(async () => {
     if (isDemoUser || !token) {
@@ -77,12 +107,16 @@ const RadarPage = () => {
       return;
     }
     try {
-      const res = await apiGet('/sharing/nearby', {
+      const params: Record<string, string> = {
         latitude: String(loc.lat),
         longitude: String(loc.lng),
         radiusMeters: String(FREE_RADIUS_METERS),
         sort: 'distance',
-      });
+      };
+      if (debouncedSearch) {
+        params.q = debouncedSearch;
+      }
+      const res = await apiGet('/sharing/nearby', params);
       if (!res.ok) return;
       const data = (await res.json()) as { users?: NearbyApiUser[] };
       const list = (data.users ?? [])
@@ -93,7 +127,7 @@ const RadarPage = () => {
     } catch {
       /* ignore */
     }
-  }, [isDemoUser, token, sharing.currentLocation]);
+  }, [isDemoUser, token, sharing.currentLocation, debouncedSearch]);
 
   useEffect(() => {
     void fetchNearby();
@@ -115,10 +149,11 @@ const RadarPage = () => {
     window.open(u.linkedinProfileUrl, '_blank');
   };
 
-  const getInitials = (name: string) =>
-    name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-
   const showDiscoverSpinner = sharing.isSharing || isDemoUser;
+  const hasSearchFilter = debouncedSearch.length > 0;
+  const emptyMessage = hasSearchFilter
+    ? 'No nearby people match your search.'
+    : 'Nobody nearby detected';
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -135,13 +170,27 @@ const RadarPage = () => {
             <div className="discover-spinner shrink-0 mt-1" aria-hidden="true" />
           ) : null}
         </div>
+        <div className="relative max-w-md mx-auto w-full mt-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <Input
+            type="search"
+            placeholder="Search by company"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-padding-x)] pb-24 max-w-md mx-auto w-full">
         {showDiscoverSpinner && users.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            Nobody nearby detected
-          </p>
+          <p className="text-sm text-muted-foreground text-center py-8">{emptyMessage}</p>
+        ) : null}
+        {!showDiscoverSpinner && users.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">{emptyMessage}</p>
         ) : null}
         <div className="space-y-3">
           {users.map((u) => (
@@ -160,65 +209,11 @@ const RadarPage = () => {
       </div>
 
       {modalUser && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            aria-label="Close"
-            onClick={() => setModalUser(null)}
-          />
-          <div
-            className="relative w-full max-w-md max-h-[85vh] rounded-2xl border border-border bg-card shadow-xl flex flex-col"
-            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
-          >
-            <button
-              type="button"
-              onClick={() => setModalUser(null)}
-              className="absolute top-3 right-3 z-10 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-              aria-label="Close"
-            >
-              <X size={22} />
-            </button>
-            <div className="overflow-y-auto flex-1 min-h-0 px-6 pt-10 pb-4">
-              <div className="flex flex-col items-center text-center">
-                {modalUser.profilePhotoUrl ? (
-                  <img
-                    src={modalUser.profilePhotoUrl}
-                    alt=""
-                    className="w-24 h-24 rounded-full object-cover border-2 border-primary/30 mb-4"
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-4 text-2xl font-bold text-foreground">
-                    {getInitials(modalUser.name)}
-                  </div>
-                )}
-                <h2 className="text-xl font-bold text-foreground">{modalUser.name}</h2>
-                {modalUser.headline ? (
-                  <p className="text-sm text-muted-foreground mt-1">{modalUser.headline}</p>
-                ) : null}
-              </div>
-              <div className="mt-6 text-left">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                  Bio
-                </p>
-                <div className="max-h-52 overflow-y-auto rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground whitespace-pre-wrap">
-                  {modalUser.bio?.trim() ? modalUser.bio : '—'}
-                </div>
-              </div>
-            </div>
-            {modalUser.linkedinProfileUrl?.trim() ? (
-              <div className="shrink-0 px-6 pb-4 pt-2 border-t border-border">
-                <Button
-                  type="button"
-                  className="w-full gap-2 bg-linkedin hover:bg-linkedin/90 text-linkedin-foreground"
-                  onClick={() => openLinkedIn(modalUser)}
-                >
-                  Connect on LinkedIn
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <DiscoverPublicProfileModal
+          user={modalUser}
+          onClose={() => setModalUser(null)}
+          onConnect={() => openLinkedIn(modalUser)}
+        />
       )}
     </div>
   );

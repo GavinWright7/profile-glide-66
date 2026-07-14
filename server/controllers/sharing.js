@@ -11,6 +11,7 @@ const userService = require('../services/userService');
 const locationService = require('../services/locationService');
 const interestService = require('../services/interestService');
 const premiumService = require('../services/premiumService');
+const { signToken } = require('../utils/jwt');
 
 const MAX_DISTANCE_METERS = config.MAX_DISTANCE_METERS;
 const MAX_DISTANCE_METERS_PREMIUM = config.MAX_DISTANCE_METERS_PREMIUM || 609.6;
@@ -100,37 +101,44 @@ async function startSharing(req, res) {
   }
 
   const userId = req.userId;
+  const user = req.user;
 
   try {
-    await redis.redisGeoAdd(userId, lat, lon);
-    exactCoords.set(userId, { latitude: lat, longitude: lon });
-    await userService.persistUserLocation(userId, lat, lon);
-    try {
-      const [profile, isPremium] = await Promise.all([
-        userService.getProfileByLinkedInId(userId).catch(() => null),
-        premiumService.hasPremiumAccess(userId).catch(() => false),
-      ]);
-      const r = redis.getRedis();
-      if (profile) {
-        const fullName = displayNameFromRow(profile);
-        await cacheUserProfile(r, userId, {
-          fullName,
-          headline: profile.headline,
-          photoUrl: profile.photo_url,
-          linkedinUrl: profile.linkedin_url,
-          interests: profile.interests || [],
-          bio: userService.bioForProfileRow(profile),
-          career: profile.career || '',
-          userUuid: profile.user_uuid || null,
-          isPremium,
-        });
+    // Single Neon write: discoverable flag + location (source of truth for nearby)
+    await userService.setDiscoverableWithLocation(userId, true, lat, lon);
+
+    const merged = await userService.getMergedUserForAuth(userId, user);
+    const token = signToken({ userId: user.id, user: merged });
+
+    res.json({ success: true, token, user: merged });
+
+    // Redis + profile cache + visit logging — supplementary, non-blocking
+    void (async () => {
+      try {
+        await redis.redisGeoAdd(userId, lat, lon);
+        exactCoords.set(userId, { latitude: lat, longitude: lon });
+        const r = redis.getRedis();
+        const [profile, isPremium] = await Promise.all([
+          userService.getProfileByLinkedInId(userId).catch(() => null),
+          premiumService.hasPremiumAccess(userId).catch(() => false),
+        ]);
+        if (profile) {
+          const fullName = displayNameFromRow(profile);
+          await cacheUserProfile(r, userId, {
+            fullName,
+            headline: profile.headline,
+            photoUrl: profile.photo_url,
+            linkedinUrl: profile.linkedin_url,
+            interests: profile.interests || [],
+            bio: userService.bioForProfileRow(profile),
+            career: profile.career || '',
+            userUuid: profile.user_uuid || null,
+            isPremium,
+          });
+        }
+      } catch (err) {
+        console.warn('[sharing] start async redis/cache error:', err.message);
       }
-    } catch {}
-    console.log(
-      `[sharing] start  userId=${userId} lat=${lat.toFixed(5)} lon=${lon.toFixed(5)}`
-    );
-    res.json({ success: true });
-    (async () => {
       try {
         const dbUserId = await interestService.resolveUserId(userId);
         if (dbUserId) {
@@ -138,9 +146,13 @@ async function startSharing(req, res) {
           await locationService.recordVisit(dbUserId, loc.id, { wasDiscoverable: true });
         }
       } catch (err) {
-        console.warn('[sharing] start async persistence error:', err.message);
+        console.warn('[sharing] start async visit error:', err.message);
       }
     })();
+
+    console.log(
+      `[sharing] start  userId=${userId} lat=${lat.toFixed(5)} lon=${lon.toFixed(5)}`
+    );
   } catch (err) {
     console.error('[sharing] start error:', err.message);
     const isTimeout = /timed out/i.test(err.message);
@@ -205,12 +217,16 @@ async function keepalive(req, res) {
  */
 async function stopSharing(req, res) {
   const userId = req.userId;
+  const user = req.user;
 
   try {
     await redis.redisGeoRemove(userId);
     exactCoords.delete(userId);
+    await userService.setDiscoverableWithLocation(userId, false, null, null);
+    const merged = await userService.getMergedUserForAuth(userId, user);
+    const token = signToken({ userId: user.id, user: merged });
     console.log(`[sharing] stop   userId=${userId}`);
-    res.json({ success: true });
+    res.json({ success: true, token, user: merged });
   } catch (err) {
     console.error('[sharing] stop error:', err.message);
     const isTimeout = /timed out/i.test(err.message);
@@ -228,14 +244,20 @@ function computeRelevanceScore(myInterests, theirInterests) {
 }
 
 /**
- * GET /sharing/nearby?latitude=<lat>&longitude=<lon>&sort=distance|relevance&radiusMeters=&filterIndustries=&filterSubcategories=
+ * GET /sharing/nearby?latitude=<lat>&longitude=<lon>&sort=distance|relevance&radiusMeters=&q=&company=&filterIndustries=&filterSubcategories=
  * Returns active users within radius (500ft free, 2000ft premium).
- * sort=relevance, filters: premium only. filterIndustries/filterSubcategories: comma-separated.
+ * q (or legacy company): case-insensitive partial match on name, industry (interests), or current_company.
  */
 async function getNearby(req, res) {
   const lat = parseCoord(req.query.latitude);
   const lon = parseCoord(req.query.longitude);
   const sort = (req.query.sort || 'distance').toLowerCase();
+  const searchText =
+    req.query.q != null
+      ? String(req.query.q).trim()
+      : req.query.company != null
+        ? String(req.query.company).trim()
+        : '';
   const filterIndustries = req.query.filterIndustries
     ? req.query.filterIndustries.split(',').map((s) => s.trim()).filter(Boolean)
     : [];
@@ -286,7 +308,8 @@ async function getNearby(req, res) {
       lon,
       radiusMeters,
       userId,
-      50
+      50,
+      searchText || null
     );
 
     console.log('[nearby] result', {
@@ -306,19 +329,39 @@ async function getNearby(req, res) {
       const id = row.linkedin_subject_id;
       const interests = row.interests || [];
       const relevanceScore = computeRelevanceScore(myInterests, interests);
-      const headline = row.headline || '';
-      const jobTitle = headline.split(' at ')[0]?.trim() || '';
+      const currentJobTitle = String(row.current_job_title ?? '').trim();
+      const currentCompany = String(row.current_company ?? '').trim();
+      const headline =
+        currentJobTitle && currentCompany
+          ? `${currentJobTitle} at ${currentCompany}`
+          : String(row.headline ?? '').trim() || currentJobTitle || currentCompany;
+      const jobTitle = currentJobTitle || headline.split(' at ')[0]?.trim() || '';
       const fullName = displayNameFromRow(row);
       const dist = Math.round(parseFloat(row.distance_meters) || 0);
+      const pastCompanies = Array.isArray(row.past_companies) ? row.past_companies : [];
+      const graduationYear =
+        row.graduation_year != null && String(row.graduation_year).trim() !== ''
+          ? String(row.graduation_year).trim()
+          : null;
+      const school = String(row.alma_mater ?? '').trim();
       return {
         userId: id,
         fullName,
+        name: fullName,
         headline,
         jobTitle,
+        currentJobTitle,
+        currentCompany,
+        school,
+        almaMater: school,
+        graduationYear,
+        pastCompanies,
         photoUrl: row.photo_url || '',
+        picture: row.photo_url || '',
         linkedinUrl: row.linkedin_url || '',
         distanceMeters: dist,
         interests,
+        industry: interests[0] || '',
         bio: userService.bioForProfileRow(row),
         career: row.career || '',
         relevanceScore,
