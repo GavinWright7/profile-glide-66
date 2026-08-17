@@ -2,6 +2,7 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -100,7 +101,15 @@ app.get('/', (_req, res) => {
     service: 'airlinks-auth',
     health: '/health',
     linkedin: '/auth/linkedin/start',
+    privacy: '/privacy',
   });
+});
+
+/** Public Privacy Policy — no auth required (App Store Connect + in-app). */
+const privacyPolicyPath = path.resolve(__dirname, 'public', 'privacy.html');
+app.get(['/privacy', '/privacy.html'], (_req, res) => {
+  res.type('html');
+  res.sendFile(privacyPolicyPath);
 });
 
 const authRoutes = require('./routes/auth');
