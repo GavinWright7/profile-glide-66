@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Linkedin, Wifi } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -13,6 +14,7 @@ const DEV_RESET_TAPS = 3;
 const APPLE_TESTER_TAPS = 5;
 
 const LoginPage = () => {
+  const navigate = useNavigate();
   const { loginWithLinkedIn, loginAsAppleTester } = useAuth();
   const devTapCountRef = useRef(0);
   const devLastTapRef = useRef(0);
@@ -98,6 +100,15 @@ const LoginPage = () => {
         >
           <Linkedin size={20} />
           Continue with LinkedIn
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full h-12 font-semibold text-base"
+          onClick={() => navigate('/login/email')}
+        >
+          Sign in via email
         </Button>
 
         <p className="text-[10px] text-muted-foreground leading-relaxed">

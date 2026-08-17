@@ -6,6 +6,7 @@ import BottomNav from "./components/BottomNav";
 import SwipeableTabs from "./components/SwipeableTabs";
 import AnimatedTabPage from "./components/AnimatedTabPage";
 import LoginPage from "./pages/LoginPage";
+import EmailLoginPage from "./pages/EmailLoginPage";
 import HomePage from "./pages/HomePage";
 import RadarPage from "./pages/RadarPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -102,6 +103,14 @@ const App = () => (
               element={
                 <PublicRoute>
                   <LoginPage />
+                </PublicRoute>
+              }
+            />
+            <Route
+              path="/login/email"
+              element={
+                <PublicRoute>
+                  <EmailLoginPage />
                 </PublicRoute>
               }
             />
