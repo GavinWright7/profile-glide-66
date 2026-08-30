@@ -58,6 +58,9 @@ if (rawBackendUrl && !rawBackendUrl.includes('YOUR_MAC_LAN_IP')) {
 
 export const BACKEND_URL = rawBackendUrl.replace(/\/$/, '');
 
+/** Public Privacy Policy URL (hosted by the API; no login required). */
+export const PRIVACY_POLICY_URL = `${BACKEND_URL}/privacy`;
+
 /** Native apps must advertise platform=mobile to the backend OAuth start. */
 export function buildLinkedInStartUrl(options: { forceReauth?: boolean } = {}): string {
   const params = new URLSearchParams();
@@ -99,6 +102,7 @@ export interface AuthUser {
   currentJobTitle?: string;
   currentCompany?: string;
   almaMater?: string;
+  schoolId?: string | null;
   pastCompanies?: string[];
   graduationYear?: string;
   bio?: string;

@@ -14,6 +14,7 @@ export interface NearbyUser {
   currentCompany?: string;
   school?: string;
   almaMater?: string;
+  schoolId?: string | null;
   graduationYear?: string | null;
   pastCompanies?: string[];
   career?: string;

@@ -9,6 +9,7 @@ import { apiGet, apiPatch } from '../api/client';
 import type { AuthUser } from '../auth/authService';
 import { CAREER_OPTIONS } from '../constants/careers';
 import { INDUSTRY_OPTIONS } from '@/constants/industries';
+import { SchoolAutocomplete, type CanonicalSchool } from '@/components/SchoolAutocomplete';
 
 export default function ProfileEditPage() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function ProfileEditPage() {
   const [currentJobTitle, setCurrentJobTitle] = useState('');
   const [currentCompany, setCurrentCompany] = useState('');
   const [almaMater, setAlmaMater] = useState('');
+  const [school, setSchool] = useState<CanonicalSchool | null>(null);
   const [graduationYear, setGraduationYear] = useState('');
   const [pastCompanies, setPastCompanies] = useState<string[]>([]);
   const [newPastCompany, setNewPastCompany] = useState('');
@@ -29,7 +31,14 @@ export default function ProfileEditPage() {
   const applyUserFields = useCallback((u: AuthUser | null | undefined, sessionUser?: AuthUser | null) => {
     setCurrentJobTitle(u?.currentJobTitle ?? sessionUser?.currentJobTitle ?? '');
     setCurrentCompany(u?.currentCompany ?? sessionUser?.currentCompany ?? '');
-    setAlmaMater(u?.almaMater ?? sessionUser?.almaMater ?? '');
+    const nextAlma = u?.almaMater ?? sessionUser?.almaMater ?? '';
+    const nextSchoolId = u?.schoolId ?? sessionUser?.schoolId ?? '';
+    setAlmaMater(nextAlma);
+    setSchool(
+      nextSchoolId && nextAlma
+        ? { id: String(nextSchoolId), name: nextAlma }
+        : null
+    );
     setGraduationYear(
       u?.graduationYear != null && String(u.graduationYear).trim() !== ''
         ? String(u.graduationYear)
@@ -107,8 +116,8 @@ export default function ProfileEditPage() {
       return;
     }
 
-    if (!currentJobTitle.trim() || !almaMater.trim()) {
-      setError('Please fill in job title and alma mater.');
+    if (!currentJobTitle.trim() || !school?.id) {
+      setError('Please fill in job title and select your school from the list.');
       return;
     }
 
@@ -119,7 +128,8 @@ export default function ProfileEditPage() {
       const payload: Record<string, unknown> = {
         currentJobTitle: currentJobTitle.trim(),
         currentCompany: currentCompany.trim() || null,
-        almaMater: almaMater.trim(),
+        almaMater: school.name.trim(),
+        schoolId: school.id,
         pastCompanies,
         interests,
         career: career.trim() || null,
@@ -213,15 +223,27 @@ export default function ProfileEditPage() {
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Alma Mater / Current School <span className="text-destructive">*</span>
               </label>
-              <Input
-                type="text"
-                placeholder="e.g. Stanford University"
-                value={almaMater}
-                onChange={(e) => setAlmaMater(e.target.value)}
-                className="font-medium"
+              <SchoolAutocomplete
+                value={school}
+                onChange={setSchool}
                 disabled={saving}
-                autoComplete="off"
+                required
+                placeholder="Search for a school"
+                error={
+                  submitAttempted && !school?.id
+                    ? 'Please select your school from the list.'
+                    : null
+                }
               />
+              {!school && almaMater ? (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Current value: {almaMater}. Select the matching school to keep it.
+                </p>
+              ) : (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Select your school from the list. Typed text is not saved until you choose a match.
+                </p>
+              )}
             </div>
 
             <div>

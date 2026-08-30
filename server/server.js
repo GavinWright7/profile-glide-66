@@ -120,10 +120,13 @@ const premiumRoutes = require('./routes/premium');
 const savedProfilesRoutes = require('./routes/savedProfiles');
 const debugRoutes = require('./routes/debug');
 const adminRouter = require('./routes/admin');
+const schoolsRoutes = require('./routes/schools');
 
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/sharing', sharingRoutes);
+app.use('/schools', schoolsRoutes);
+app.use('/api/schools', schoolsRoutes);
 app.use('/debug', debugRoutes);
 app.use('/interactions', interactionsRoutes);
 app.use('/premium', premiumRoutes);

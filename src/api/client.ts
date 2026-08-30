@@ -99,11 +99,15 @@ export async function apiRequest(
 }
 
 /** GET with JSON response */
-export async function apiGet<T = unknown>(path: string, params?: Record<string, string>): Promise<Response> {
+export async function apiGet<T = unknown>(
+  path: string,
+  params?: Record<string, string>,
+  init: ApiRequestInit = {}
+): Promise<Response> {
   const url = params && Object.keys(params).length > 0
     ? `${buildUrl(path)}?${new URLSearchParams(params).toString()}`
     : buildUrl(path);
-  return apiRequest(url, { method: 'GET' });
+  return apiRequest(url, { method: 'GET', ...init });
 }
 
 /** POST with JSON body */

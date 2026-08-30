@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiPut } from '../api/client';
 import { saveSession, BACKEND_URL, type AuthUser } from '../auth/authService';
 import { isValidLinkedInUrl } from '../utils/linkedinUrl';
+import { SchoolAutocomplete, type CanonicalSchool } from '@/components/SchoolAutocomplete';
 
 const DIAG = '[AirLinks][ProfessionalOnboarding]';
 
@@ -29,7 +30,11 @@ const OnboardingProfessionalBackgroundPage = () => {
   const navigate = useNavigate();
   const [currentJobTitle, setCurrentJobTitle] = useState(user?.currentJobTitle ?? '');
   const [currentCompany, setCurrentCompany] = useState(user?.currentCompany ?? '');
-  const [almaMater, setAlmaMater] = useState(user?.almaMater ?? '');
+  const [school, setSchool] = useState<CanonicalSchool | null>(
+    user?.schoolId && user?.almaMater
+      ? { id: String(user.schoolId), name: user.almaMater }
+      : null
+  );
   const [graduationYear, setGraduationYear] = useState(
     user?.graduationYear != null ? String(user.graduationYear) : ''
   );
@@ -58,7 +63,7 @@ const OnboardingProfessionalBackgroundPage = () => {
   const gradInRange = !gradYearProvided || (gradNum >= 1950 && gradNum <= 2100);
 
   const canContinue =
-    currentJobTitle.trim() && almaMater.trim() && gradYearOk && gradInRange;
+    currentJobTitle.trim() && Boolean(school?.id) && gradYearOk && gradInRange;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +73,7 @@ const OnboardingProfessionalBackgroundPage = () => {
     if (!canContinue) {
       console.warn(`${DIAG} Continue blocked: client validation`, {
         jobTitleLen: currentJobTitle.trim().length,
-        almaMaterLen: almaMater.trim().length,
+        almaMaterLen: school?.name?.trim().length ?? 0,
         gradYearOk,
         gradInRange,
         graduationYearLen: graduationYear.trim().length,
@@ -76,7 +81,7 @@ const OnboardingProfessionalBackgroundPage = () => {
       if (gradYearProvided && (!gradYearOk || !gradInRange)) {
         setError('Graduation year must be a 4-digit year between 1950 and 2100 (e.g. 2026), or leave blank.');
       } else {
-        setError('Please fill in job title and alma mater.');
+        setError('Please fill in job title and select your school from the list.');
       }
       return;
     }
@@ -92,7 +97,7 @@ const OnboardingProfessionalBackgroundPage = () => {
       apiHost: apiHostname(),
       hasToken: true,
       jobTitleLen: currentJobTitle.trim().length,
-      almaMaterLen: almaMater.trim().length,
+      almaMaterLen: school?.name?.trim().length ?? 0,
       graduationYear: graduationYear.trim(),
       pastCompaniesCount: pastCompanies.length,
     });
@@ -100,7 +105,8 @@ const OnboardingProfessionalBackgroundPage = () => {
       const res = await apiPut('/profile/professional-background', {
         currentJobTitle: currentJobTitle.trim(),
         currentCompany: currentCompany.trim() || null,
-        almaMater: almaMater.trim(),
+        almaMater: school?.name?.trim(),
+        schoolId: school?.id,
         pastCompanies,
         ...(gradTrim ? { graduationYear: gradTrim } : {}),
       });
@@ -222,15 +228,21 @@ const OnboardingProfessionalBackgroundPage = () => {
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
               Alma Mater / Current School <span className="text-destructive">*</span>
             </label>
-            <Input
-              type="text"
-              placeholder="e.g. Stanford University"
-              value={almaMater}
-              onChange={(e) => setAlmaMater(e.target.value)}
-              className="font-medium"
+            <SchoolAutocomplete
+              value={school}
+              onChange={setSchool}
               disabled={loading}
-              autoComplete="off"
+              required
+              placeholder="Search for a school"
+              error={
+                submitAttempted && !school?.id
+                  ? 'Please select your school from the list.'
+                  : null
+              }
             />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Select your school from the list. Typed text is not saved until you choose a match.
+            </p>
           </div>
 
           <div>
@@ -322,7 +334,7 @@ const OnboardingProfessionalBackgroundPage = () => {
           </Button>
           {!canContinue && !loading && (
             <p className="text-[11px] text-muted-foreground text-center">
-              Fill in job title and alma mater to continue.
+              Fill in job title and select a school to continue.
             </p>
           )}
         </form>

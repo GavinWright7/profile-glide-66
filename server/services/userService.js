@@ -115,7 +115,7 @@ async function updateInterests(linkedinSubjectId, interests) {
 }
 
 async function updateProfessionalBackground(linkedinSubjectId, data) {
-  const { currentJobTitle, currentCompany, almaMater, pastCompanies, graduationYear } = data;
+  const { currentJobTitle, currentCompany, almaMater, pastCompanies, graduationYear, schoolId } = data;
   const existingRow = await getProfileByLinkedInId(linkedinSubjectId);
   const res = await db.query(
     `UPDATE profiles p
@@ -124,6 +124,7 @@ async function updateProfessionalBackground(linkedinSubjectId, data) {
          alma_mater = $4,
          past_companies = $5,
          graduation_year = $6,
+         school_id = $7,
          updated_at = NOW()
      FROM users u
      WHERE u.id = p.user_id AND u.linkedin_subject_id = $1
@@ -135,6 +136,7 @@ async function updateProfessionalBackground(linkedinSubjectId, data) {
       almaMater || null,
       Array.isArray(pastCompanies) ? pastCompanies : [],
       graduationYear != null && String(graduationYear).trim() !== '' ? String(graduationYear).trim() : null,
+      schoolId != null && Number.isInteger(Number(schoolId)) ? Number(schoolId) : null,
     ]
   );
   const row = res.rows[0] || null;
@@ -195,6 +197,7 @@ function mergeJwtUserWithProfileRow(baseUser, row) {
             : baseUser.almaMater != null && String(baseUser.almaMater).trim() !== ''
               ? String(baseUser.almaMater).trim()
               : '',
+        schoolId: row.school_id != null ? String(row.school_id) : baseUser.schoolId ?? null,
         pastCompanies: Array.isArray(row.past_companies) ? row.past_companies : baseUser.pastCompanies ?? [],
         graduationYear:
           row.graduation_year != null && String(row.graduation_year).trim() !== ''
@@ -315,8 +318,6 @@ async function setDiscoverableWithLocation(linkedinSubjectId, isDiscoverable, la
         );
         console.log('[discoverable] set true + location', {
           linkedinSubjectId,
-          latitude: Number(latitude),
-          longitude: Number(longitude),
           rowCount: res.rowCount,
         });
       } else {
@@ -362,20 +363,15 @@ async function persistUserLocation(linkedinSubjectId, latitude, longitude) {
          last_seen_at = NOW(),
          updated_at = NOW()
      FROM users u
-     WHERE u.id = p.user_id AND u.linkedin_subject_id = $1`,
+     WHERE u.id = p.user_id
+       AND u.linkedin_subject_id = $1
+       AND p.is_discoverable = true`,
     [linkedinSubjectId, latitude, longitude]
   );
-  console.log('[persistUserLocation]', {
-    linkedinSubjectId,
-    latitude,
-    longitude,
-    rowCount: res.rowCount,
-  });
   if (res.rowCount === 0) {
-    console.error(
-      '[CRITICAL] persistUserLocation wrote 0 rows — profile or user row missing for',
-      linkedinSubjectId
-    );
+    console.warn('[persistUserLocation] 0 rows (not discoverable or missing profile)', {
+      linkedinSubjectId,
+    });
   }
   return res.rowCount;
 }
@@ -410,7 +406,7 @@ async function getDiscoveryPipelineStats(latitude, longitude, radiusMeters, excl
     `SELECT
        COUNT(*) FILTER (WHERE p.is_discoverable = true)::int AS total_discoverable,
        COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_latitude IS NOT NULL)::int AS with_location,
-       COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_seen_at > NOW() - INTERVAL '7 days')::int AS recent_24h
+       COUNT(*) FILTER (WHERE p.is_discoverable = true AND p.last_seen_at > NOW() - INTERVAL '24 hours')::int AS recent_24h
      FROM profiles p`
   );
   const distExpr = haversineSql('$1', '$2');
@@ -421,10 +417,10 @@ async function getDiscoveryPipelineStats(latitude, longitude, radiusMeters, excl
      WHERE p.is_discoverable = true
        AND p.last_latitude IS NOT NULL
        AND p.last_longitude IS NOT NULL
-       AND p.last_seen_at > NOW() - INTERVAL '7 days'
+       AND p.last_seen_at > NOW() - make_interval(hours => $5)
        AND u.linkedin_subject_id != $3
        AND ${distExpr} < $4`,
-    [latitude, longitude, excludeLinkedinSubjectId, radiusMeters]
+    [latitude, longitude, excludeLinkedinSubjectId, radiusMeters, DISCOVERY_MAX_AGE_HOURS]
   );
   return {
     total_discoverable: summaryRes.rows[0]?.total_discoverable ?? 0,
@@ -436,6 +432,7 @@ async function getDiscoveryPipelineStats(latitude, longitude, radiusMeters, excl
 
 /**
  * Nearby discoverable users from Neon (profiles + users join).
+ * @param {object|null} filters
  */
 async function getNearbyDiscoverableUsers(
   latitude,
@@ -443,50 +440,106 @@ async function getNearbyDiscoverableUsers(
   radiusMeters,
   excludeLinkedinSubjectId,
   limit = 50,
-  searchQuery = null
+  filters = null
 ) {
   const radius = Number.isFinite(radiusMeters) ? radiusMeters : DEFAULT_DISCOVERY_RADIUS_METERS;
-  const searchTrim = searchQuery != null ? String(searchQuery).trim() : '';
+  const name = filters?.name != null ? String(filters.name).trim() : '';
+  const company = filters?.company != null ? String(filters.company).trim() : '';
+  const industry = filters?.industry != null ? String(filters.industry).trim() : '';
+  const graduationYear =
+    filters?.graduationYear != null ? String(filters.graduationYear).trim() : '';
+  const schoolId =
+    filters?.schoolId != null && String(filters.schoolId).trim() !== ''
+      ? Number(filters.schoolId)
+      : null;
+  const legacyBy = filters?.filterBy != null ? String(filters.filterBy).trim().toLowerCase() : '';
+  const legacyValue = filters?.filterValue != null ? String(filters.filterValue).trim() : '';
 
-  console.log('[nearby] query start', {
-    latitude,
-    longitude,
-    excludeLinkedinSubjectId,
-    radiusMeters: radius,
-    searchQuery: searchTrim || null,
-  });
+  const resolved = {
+    name: name || (legacyBy === 'name' ? legacyValue : ''),
+    company: company || (legacyBy === 'company' ? legacyValue : ''),
+    industry: industry || (legacyBy === 'industry' ? legacyValue : ''),
+    graduationYear:
+      graduationYear ||
+      (legacyBy === 'graduationyear' || legacyBy === 'graduation_year' ? legacyValue : ''),
+    schoolId:
+      Number.isInteger(schoolId) && schoolId > 0
+        ? schoolId
+        : legacyBy === 'college' && /^\d+$/.test(legacyValue)
+          ? Number(legacyValue)
+          : null,
+    collegeText: legacyBy === 'college' && !/^\d+$/.test(legacyValue) ? legacyValue : '',
+  };
 
-  if (process.env.LOG_NEARBY_PIPELINE_STATS === '1') {
-    try {
-      const pipeline = await getDiscoveryPipelineStats(
-        latitude,
-        longitude,
-        radius,
-        excludeLinkedinSubjectId
-      );
-      console.log('[nearby] pipeline stats (profiles table)', pipeline);
-    } catch (err) {
-      console.error('[nearby] pipeline stats error:', err.message);
+  if (!resolved.schoolId && resolved.collegeText) {
+    const schoolService = require('./schoolService');
+    const uniqueId = await schoolService.resolveUniqueSchoolId(resolved.collegeText);
+    if (uniqueId) {
+      resolved.schoolId = uniqueId;
+      resolved.collegeText = '';
     }
   }
 
+  console.log('[nearby] query start', {
+    excludeLinkedinSubjectId,
+    radiusMeters: radius,
+    name: resolved.name || null,
+    company: resolved.company || null,
+    industry: resolved.industry || null,
+    graduationYear: resolved.graduationYear || null,
+    schoolId: resolved.schoolId,
+  });
+
   const distExpr = haversineSql('$1', '$2');
-  const searchClause = searchTrim
-    ? `AND (
-         TRIM(COALESCE(p.full_name, '')) ILIKE $6
-         OR TRIM(COALESCE(p.first_name, '')) ILIKE $6
-         OR TRIM(COALESCE(p.last_name, '')) ILIKE $6
-         OR TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) ILIKE $6
-         OR TRIM(COALESCE(p.current_company, '')) ILIKE $6
-         OR EXISTS (
-           SELECT 1 FROM unnest(COALESCE(p.interests, ARRAY[]::text[])) AS interest
-           WHERE interest ILIKE $6
-         )
-       )`
-    : '';
-  const queryParams = searchTrim
-    ? [latitude, longitude, excludeLinkedinSubjectId, radius, limit, `%${searchTrim}%`]
-    : [latitude, longitude, excludeLinkedinSubjectId, radius, limit];
+  const queryParams = [
+    latitude,
+    longitude,
+    excludeLinkedinSubjectId,
+    radius,
+    limit,
+    DISCOVERY_MAX_AGE_HOURS,
+  ];
+  const filterParts = [];
+
+  if (resolved.name) {
+    queryParams.push(`%${resolved.name}%`);
+    filterParts.push(`(
+      TRIM(COALESCE(p.full_name, '')) ILIKE $${queryParams.length}
+      OR TRIM(COALESCE(p.first_name, '')) ILIKE $${queryParams.length}
+      OR TRIM(COALESCE(p.last_name, '')) ILIKE $${queryParams.length}
+      OR TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) ILIKE $${queryParams.length}
+    )`);
+  }
+  if (resolved.company) {
+    queryParams.push(`%${resolved.company}%`);
+    filterParts.push(`(
+      TRIM(COALESCE(p.current_company, '')) ILIKE $${queryParams.length}
+      OR EXISTS (
+        SELECT 1 FROM unnest(COALESCE(p.past_companies, ARRAY[]::text[])) AS past
+        WHERE TRIM(past) ILIKE $${queryParams.length}
+      )
+    )`);
+  }
+  if (resolved.industry) {
+    queryParams.push(resolved.industry);
+    filterParts.push(`EXISTS (
+      SELECT 1 FROM unnest(COALESCE(p.interests, ARRAY[]::text[])) AS interest
+      WHERE interest = $${queryParams.length}
+    )`);
+  }
+  if (resolved.graduationYear) {
+    queryParams.push(resolved.graduationYear);
+    filterParts.push(`TRIM(COALESCE(p.graduation_year, '')) = $${queryParams.length}`);
+  }
+  if (resolved.schoolId) {
+    queryParams.push(resolved.schoolId);
+    filterParts.push(`p.school_id = $${queryParams.length}`);
+  } else if (resolved.collegeText) {
+    // No confident canonical match — do not fall back to fuzzy free-text.
+    filterParts.push('FALSE');
+  }
+
+  const filterClause = filterParts.length ? `AND ${filterParts.join(' AND ')}` : '';
 
   const res = await db.query(
     `SELECT u.linkedin_subject_id,
@@ -504,20 +557,19 @@ async function getNearbyDiscoverableUsers(
             p.current_job_title,
             p.current_company,
             p.alma_mater,
+            p.school_id,
             p.past_companies,
             p.graduation_year,
-            p.last_latitude,
-            p.last_longitude,
             ${distExpr} AS distance_meters
      FROM profiles p
      JOIN users u ON u.id = p.user_id
      WHERE p.is_discoverable = true
        AND p.last_latitude IS NOT NULL
        AND p.last_longitude IS NOT NULL
-       AND p.last_seen_at > NOW() - INTERVAL '7 days'
+       AND p.last_seen_at > NOW() - make_interval(hours => $6)
        AND u.linkedin_subject_id != $3
        AND ${distExpr} < $4
-       ${searchClause}
+       ${filterClause}
      ORDER BY distance_meters ASC
      LIMIT $5`,
     queryParams
@@ -525,7 +577,11 @@ async function getNearbyDiscoverableUsers(
 
   console.log('[nearby] query result', {
     matchCount: res.rows.length,
-    searchQuery: searchTrim || null,
+    name: resolved.name || null,
+    company: resolved.company || null,
+    industry: resolved.industry || null,
+    graduationYear: resolved.graduationYear || null,
+    schoolId: resolved.schoolId,
   });
 
   return res.rows;

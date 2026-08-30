@@ -6,6 +6,7 @@
  */
 
 const config = require('../config');
+const { INTEREST_OPTIONS } = require('../constants/interests');
 const redis = require('../services/redis');
 const userService = require('../services/userService');
 const locationService = require('../services/locationService');
@@ -150,9 +151,7 @@ async function startSharing(req, res) {
       }
     })();
 
-    console.log(
-      `[sharing] start  userId=${userId} lat=${lat.toFixed(5)} lon=${lon.toFixed(5)}`
-    );
+    console.log(`[sharing] start userId=${userId}`);
   } catch (err) {
     console.error('[sharing] start error:', err.message);
     const isTimeout = /timed out/i.test(err.message);
@@ -177,6 +176,12 @@ async function heartbeat(req, res) {
   const userId = req.userId;
 
   try {
+    const profile = await userService.getProfileByLinkedInId(userId);
+    if (!profile || profile.is_discoverable !== true) {
+      await redis.redisGeoRemove(userId);
+      exactCoords.delete(userId);
+      return res.json({ success: true, discoverable: false, lastHeartbeatAt: new Date().toISOString() });
+    }
     await redis.redisGeoAdd(userId, lat, lon);
     exactCoords.set(userId, { latitude: lat, longitude: lon });
     const rowCount = await userService.persistUserLocation(userId, lat, lon);
@@ -244,20 +249,34 @@ function computeRelevanceScore(myInterests, theirInterests) {
 }
 
 /**
- * GET /sharing/nearby?latitude=<lat>&longitude=<lon>&sort=distance|relevance&radiusMeters=&q=&company=&filterIndustries=&filterSubcategories=
- * Returns active users within radius (500ft free, 2000ft premium).
- * q (or legacy company): case-insensitive partial match on name, industry (interests), or current_company.
+ * GET /sharing/nearby?...&filterBy=name|college|industry|company&filterValue=
+ * Legacy q/company params map to filterBy=name for backwards compatibility.
  */
 async function getNearby(req, res) {
   const lat = parseCoord(req.query.latitude);
   const lon = parseCoord(req.query.longitude);
   const sort = (req.query.sort || 'distance').toLowerCase();
-  const searchText =
+  let filterBy =
+    req.query.filterBy != null ? String(req.query.filterBy).trim().toLowerCase() : '';
+  let filterValue =
+    req.query.filterValue != null ? String(req.query.filterValue).trim() : '';
+  const filterName = req.query.filterName != null ? String(req.query.filterName).trim() : '';
+  const filterCompany =
+    req.query.filterCompany != null ? String(req.query.filterCompany).trim() : '';
+  const filterIndustry =
+    req.query.filterIndustry != null ? String(req.query.filterIndustry).trim() : '';
+  const filterGraduationYear =
+    req.query.filterGraduationYear != null ? String(req.query.filterGraduationYear).trim() : '';
+  const filterSchoolId =
+    req.query.filterSchoolId != null ? String(req.query.filterSchoolId).trim() : '';
+  const legacySearch =
     req.query.q != null
       ? String(req.query.q).trim()
-      : req.query.company != null
-        ? String(req.query.company).trim()
-        : '';
+      : '';
+  if (!filterBy && legacySearch) {
+    filterBy = 'name';
+    filterValue = legacySearch;
+  }
   const filterIndustries = req.query.filterIndustries
     ? req.query.filterIndustries.split(',').map((s) => s.trim()).filter(Boolean)
     : [];
@@ -267,6 +286,18 @@ async function getNearby(req, res) {
 
   if (lat === null || lon === null) {
     return res.status(400).json({ error: 'latitude and longitude query params required' });
+  }
+
+  const allowedFilterBy = new Set(['name', 'college', 'industry', 'company', 'graduationyear']);
+  if (filterBy && !allowedFilterBy.has(filterBy)) {
+    return res.status(400).json({ error: 'filterBy must be name, college, industry, company, or graduationYear' });
+  }
+  if (filterBy && !filterValue) {
+    return res.status(400).json({ error: 'filterValue is required when filterBy is set' });
+  }
+  if ((filterBy === 'industry' && filterValue && !INTEREST_OPTIONS.includes(filterValue)) ||
+      (filterIndustry && !INTEREST_OPTIONS.includes(filterIndustry))) {
+    return res.status(400).json({ error: 'Industry filter must be a valid industry' });
   }
 
   const userId = req.userId;
@@ -288,9 +319,13 @@ async function getNearby(req, res) {
 
     console.log('[nearby] request', {
       linkedinSubjectId: userId,
-      latitude: lat,
-      longitude: lon,
       radiusMeters,
+      filterName: filterName || null,
+      filterCompany: filterCompany || null,
+      filterIndustry: filterIndustry || null,
+      filterGraduationYear: filterGraduationYear || null,
+      filterSchoolId: filterSchoolId || null,
+      filterBy: filterBy || null,
     });
 
     const validSort = ['distance', 'relevance'].includes(sort) ? sort : 'distance';
@@ -303,13 +338,30 @@ async function getNearby(req, res) {
       return res.status(403).json({ error: 'Premium required for radar filters', requiresPremium: true });
     }
 
+    const requester = await userService.getProfileByLinkedInId(userId);
+    if (!requester || requester.is_discoverable !== true) {
+      return res.json({
+        users: [],
+        count: 0,
+        requiresDiscoverable: true,
+      });
+    }
+
     const dbRows = await userService.getNearbyDiscoverableUsers(
       lat,
       lon,
       radiusMeters,
       userId,
       50,
-      searchText || null
+      {
+        name: filterName,
+        company: filterCompany,
+        industry: filterIndustry,
+        graduationYear: filterGraduationYear,
+        schoolId: filterSchoolId,
+        filterBy,
+        filterValue,
+      }
     );
 
     console.log('[nearby] result', {
@@ -345,6 +397,7 @@ async function getNearby(req, res) {
           : null;
       const school = String(row.alma_mater ?? '').trim();
       return {
+        schoolId: row.school_id != null ? String(row.school_id) : null,
         userId: id,
         fullName,
         name: fullName,

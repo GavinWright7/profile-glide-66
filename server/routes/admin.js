@@ -61,7 +61,9 @@ router.use(requireAdminKey);
 
 /**
  * GET /admin/map-data
- * Discoverable users with location seen in the last 24 hours.
+ * Same core visibility as Discover: is_discoverable = true, valid coords,
+ * last_seen_at within 24 hours. Intentional difference: no viewer radius
+ * (ops dashboard is global).
  */
 router.get('/map-data', async (_req, res) => {
   try {

@@ -10,6 +10,27 @@ const {
   bioProfileFromUser,
   generateBio,
 } = require('../utils/bioTemplate');
+const schoolService = require('../services/schoolService');
+const redis = require('../services/redis');
+
+async function resolveCanonicalSchool(schoolId, almaMater) {
+  const trimmedAlma = String(almaMater ?? '').trim();
+  if (schoolId != null && String(schoolId).trim() !== '') {
+    const school = await schoolService.getSchoolById(schoolId);
+    if (!school) {
+      const err = new Error('Select a school from the list');
+      err.statusCode = 400;
+      throw err;
+    }
+    return { schoolId: school.id, almaMater: school.canonical_name };
+  }
+  const uniqueId = await schoolService.resolveUniqueSchoolId(trimmedAlma);
+  if (uniqueId) {
+    const school = await schoolService.getSchoolById(uniqueId);
+    if (school) return { schoolId: school.id, almaMater: school.canonical_name };
+  }
+  return { schoolId: null, almaMater: trimmedAlma };
+}
 
 const MAX_BIO_LEN = 300;
 
@@ -101,7 +122,7 @@ async function updateInterests(req, res) {
  * Body: { currentJobTitle, currentCompany, almaMater, graduationYear?, pastCompanies?: string[] }
  */
 async function updateProfessionalBackground(req, res) {
-  const { currentJobTitle, currentCompany, almaMater, graduationYear, pastCompanies } = req.body;
+  const { currentJobTitle, currentCompany, almaMater, graduationYear, pastCompanies, schoolId } = req.body;
   const user = req.user;
 
   const jobTitle = String(currentJobTitle ?? '').trim();
@@ -135,12 +156,14 @@ async function updateProfessionalBackground(req, res) {
   const gradValue = gradRaw || null;
 
   try {
+    const canonical = await resolveCanonicalSchool(schoolId, alma);
     const updatedRow = await userService.updateProfessionalBackground(user.id, {
       currentJobTitle: jobTitle,
       currentCompany: company || null,
-      almaMater: alma,
+      almaMater: canonical.almaMater,
       pastCompanies: past,
       graduationYear: gradValue,
+      schoolId: canonical.schoolId,
     });
     if (!updatedRow) {
       console.error('[profile] professional background: no profile row updated for subject', user.id);
@@ -167,7 +190,7 @@ async function updateProfessionalBackground(req, res) {
               firstName: user.firstName,
               currentJobTitle: jobTitle,
               currentCompany: company || null,
-              almaMater: alma,
+              almaMater: canonical.almaMater,
               pastCompanies: past,
               graduationYear: gradValue,
             })
@@ -175,7 +198,8 @@ async function updateProfessionalBackground(req, res) {
       career: user.career ?? '',
       currentJobTitle: jobTitle,
       currentCompany: company || null,
-      almaMater: alma,
+      almaMater: canonical.almaMater,
+      schoolId: canonical.schoolId != null ? String(canonical.schoolId) : null,
       pastCompanies: past,
       ...(gradValue ? { graduationYear: gradValue } : {}),
     };
@@ -184,10 +208,14 @@ async function updateProfessionalBackground(req, res) {
 
     console.log('[profile] professional background updated for', user.id, {
       graduationYear: updatedUser.graduationYear,
+      schoolId: updatedUser.schoolId,
       responseUserKeys: Object.keys(updatedUser),
     });
     res.json({ token, user: updatedUser });
   } catch (err) {
+    if (err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     console.error('[profile] updateProfessionalBackground error:', err.message);
     res.status(500).json({ error: 'Failed to update professional background' });
   }
@@ -273,12 +301,14 @@ async function getProfile(req, res) {
       currentJobTitle,
       currentCompany,
       almaMater,
+      schoolId: stored?.school_id != null ? String(stored.school_id) : user.schoolId ?? null,
       pastCompanies,
       graduationYear,
       bio,
       career,
       interests: Array.isArray(stored?.interests) ? stored.interests : user.interests ?? [],
       goals: Array.isArray(stored?.goals) ? stored.goals : user.goals ?? [],
+      isDiscoverable: stored?.is_discoverable === true,
     };
     res.json({ user: merged });
   } catch (err) {
@@ -396,14 +426,20 @@ async function patchMe(req, res) {
       : user.pastCompanies ?? [];
 
     try {
+      const incomingSchoolId = req.body.schoolId !== undefined ? req.body.schoolId : user.schoolId;
+      const canonical = await resolveCanonicalSchool(incomingSchoolId, alma);
       await userService.updateProfessionalBackground(user.id, {
         currentJobTitle: jobTitle,
         currentCompany: company || null,
-        almaMater: alma,
+        almaMater: canonical.almaMater,
         pastCompanies: past,
         graduationYear: gradRaw || null,
+        schoolId: canonical.schoolId,
       });
     } catch (err) {
+      if (err.statusCode === 400) {
+        return res.status(400).json({ error: err.message });
+      }
       console.error('[profile] patchMe professional error:', err.message);
       return res.status(500).json({ error: 'Failed to update professional background' });
     }
@@ -539,6 +575,9 @@ async function updateDiscoverable(req, res) {
         hasCoords ? lonRaw : null
       );
     }
+    if (!isDiscoverable) {
+      await redis.redisGeoRemove(user.id).catch(() => {});
+    }
     const merged = await userService.getMergedUserForAuth(user.id, user);
     const token = signToken({ userId: user.id, user: merged });
     res.json({ token, user: merged });
@@ -574,7 +613,7 @@ async function updateLocation(req, res) {
       return res.status(403).json({ error: 'Enable discoverability to update location' });
     }
     await userService.persistUserLocation(user.id, lat, lon);
-    console.log('[profile] location updated', { userId: user.id, lat, lon });
+    console.log('[profile] location updated', { userId: user.id });
     res.json({ success: true, lastSeenAt: new Date().toISOString() });
   } catch (err) {
     console.error('[profile] updateLocation error:', err.message);

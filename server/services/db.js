@@ -69,6 +69,16 @@ async function runMigrations() {
       ON profiles (is_discoverable, last_seen_at DESC)
       WHERE is_discoverable = true AND last_latitude IS NOT NULL
   `);
+  const schoolService = require('./schoolService');
+  await schoolService.ensureSchoolsSchema();
+  await schoolService.seedSchoolsIfNeeded();
+  if (typeof schoolService.ensureExtraSchools === 'function') {
+    await schoolService.ensureExtraSchools();
+  }
+  if (typeof schoolService.ensureCommonAliases === 'function') {
+    await schoolService.ensureCommonAliases();
+  }
+  await schoolService.backfillProfileSchools();
   console.log('[startup] migrations applied');
 }
 
